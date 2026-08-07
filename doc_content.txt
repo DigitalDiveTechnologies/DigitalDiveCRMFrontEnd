@@ -1,0 +1,411 @@
+TECHNICAL ARCHITECTURE
+UAE Accounting, Billing & Inventory Management Platform
+Developer Handover Document
+Product Type
+Vyapar-class SaaS for UAE SMEs
+Primary Platforms
+Mobile, Web Dashboard, Desktop POS
+Architecture Style
+Offline-first modular monolith
+Primary Currency
+AED
+Document Status
+Architecture baseline for estimation and implementation
+Purpose: Define the technical foundation, domain boundaries, data model, integrations, security controls, and phased delivery plan required for development.
+1. Executive Summary
+The platform will provide invoicing, purchases, customer and supplier ledgers, inventory, VAT reporting, financial statements, POS operations, offline working, and future UAE e-invoicing integration. The recommended launch architecture is a modular monolith with strict domain boundaries, PostgreSQL as the system of record, and an offline-first client architecture for mobile and desktop.
+Build financial correctness before convenience features. Every posted financial transaction must create balanced journal entries.
+Treat the invoice as structured data. PDF, thermal receipt, and e-invoice XML are separate renderers of the same canonical invoice object.
+Start with a modular monolith, not microservices. Extract services only when scale or operational boundaries justify it.
+Use Flutter for mobile and desktop POS; use React/Next.js for the accountant and administration dashboard.
+Use PostgreSQL with tenant isolation, NUMERIC money fields, immutable posted entries, audit logs, and database-level integrity constraints.
+Keep UAE compliance rules configurable. Final legal and tax validation must be completed with a UAE tax adviser before production launch.
+1.1 Scope
+Included in Architecture
+Not Finalized by this Document
+Sales, purchases, ledgers, inventory, VAT, reporting, POS, offline sync, notifications, e-invoicing readiness
+Final UI design and branding
+Multi-tenant SaaS foundation and role-based access
+Exact subscription pricing and commercial packages
+Core database entities and posting workflow
+Final accounting chart for every industry
+API, security, infrastructure, testing, deployment and roadmap
+Legal opinion or tax filing certification
+2. Users, Platforms and Roles
+Surface
+Primary Users
+Main Usage
+Mobile app (Android/iOS)
+Owner, biller, field salesperson
+Create invoices, receive payments, view parties/stock, work offline
+Web dashboard
+Owner, accountant, admin
+Configuration, reporting, reconciliation, audit, imports, user management
+Desktop POS (Windows/macOS)
+Cashier, retail counter
+Fast billing, barcode scanning, thermal printing, shift operations
+Role
+Core Permissions
+Owner
+Full company access, configuration, users, reports, posting, subscription and branch control
+Secondary Admin
+Operational access according to assigned policies; cannot override owner-only security settings
+Biller / Cashier
+Create drafts and sales, collect permitted payments, view assigned stock; no general ledger access
+Accountant
+Read financial records, post authorized adjustments, reconcile, close periods, export reports
+Inventory Manager
+Items, warehouses, stock counts, transfers and adjustments; no unrestricted ledger access
+Auditor (optional)
+Read-only access to reports, journal history and audit logs
+3. Recommended Technology Stack
+Layer
+Recommendation
+Reason
+Mobile + Desktop
+Flutter / Dart
+Shared code, strong offline support, native performance, POS and printer integrations
+Web Dashboard
+Next.js / React / TypeScript
+Better data grids, reporting UX, browser printing, admin workflows and ecosystem
+Backend API
+Node.js + NestJS + TypeScript
+Strong modules, dependency injection, validation, queues and shared API types
+Primary Database
+PostgreSQL
+Transactions, NUMERIC, constraints, indexes, JSONB, RLS and mature backup tooling
+Local Database
+SQLite through Drift
+Relational local model suitable for invoices, inventory and sync queues
+Cache / Jobs
+Redis + BullMQ
+Background jobs, rate limits, notification queues and short-lived cache
+Object Storage
+S3-compatible storage
+Invoice PDFs, import files, exports, attachments and backups
+API Contract
+REST + OpenAPI
+Simple client integration, generated SDKs and clear developer documentation
+Infrastructure
+Docker + managed containers
+Repeatable deployment without early Kubernetes complexity
+CI/CD
+GitHub Actions or GitLab CI
+Automated lint, tests, migrations, build and controlled deployments
+4. High-Level System Architecture
+[ Flutter Mobile ]      [ Flutter Desktop POS ]      [ Next.js Web ]        |                         |                           |        +---------------- HTTPS / REST / OpenAPI ------------+                                  |                         [ API Gateway / NestJS ]                                  |        +-------------------------+--------------------------+        |          |          |          |          |       |      Auth      Sales      Purchases   Ledger    Inventory  Tax        |          |          |          |          |       |        +-------------------- Domain Services ----------------+                                  |                  [ PostgreSQL - Source of Truth ]                     |              |             |                  [Redis]      [Object Storage] [Audit Log]                     |                 [BullMQ Workers]                     |       WhatsApp / SMS / Email / ASP e-Invoicing / Webhooks
+4.1 Architecture Principle
+The backend is deployed as one application initially, but each business domain must be implemented as an isolated NestJS module. A module may access another module only through an application service interface or published domain event. Direct cross-module table writes are prohibited.
+5. Backend Modules and Responsibilities
+Module
+Responsibilities
+Identity & Access
+Login, refresh tokens, MFA option, device sessions, tenant membership, roles and policies
+Tenant & Subscription
+Business profile, branches, fiscal settings, plan limits, feature flags and billing state
+Party Management
+Customers, suppliers, contacts, TRN, credit limits, opening balances and statements
+Item Catalogue
+Items/services, SKU, barcode, units, VAT category, sales/purchase price and reorder rules
+Sales
+Quotations, sales orders optional, invoices, credit notes, receipts and sales returns
+Purchases
+Purchase bills, debit notes, supplier payments and purchase returns
+Ledger
+Chart of accounts, journal entries, posting engine, reversals, period close and trial balance
+Inventory
+Warehouses, stock movements, transfers, counts, adjustments, batches/serials optional
+Tax
+VAT calculations, tax codes, VAT 201 mapping, compliant invoice fields and e-invoice serialization
+Payments & Banking
+Cash/bank accounts, allocations, refunds, deposits and bank reconciliation
+Reporting
+P&L, balance sheet, cash flow, aging, VAT, inventory valuation, sales and audit reports
+Sync
+Device registration, outbox ingestion, incremental pull, conflict detection and reconciliation
+Documents
+PDF invoices, thermal receipts, templates, file storage and signed download URLs
+Notifications
+WhatsApp, SMS, email templates, delivery status, retries and rate limiting
+Import/Export
+Excel templates, staging validation, previews, commit jobs and export generation
+Audit & Compliance
+Immutable action logs, change history, data retention and compliance exports
+6. Core Data Model
+Every tenant-owned table must include tenant_id. Branch-specific records also include branch_id. UUIDs are used as primary keys to support offline creation and distributed clients. Money uses NUMERIC/DECIMAL; floating-point types are prohibited.
+Domain
+Key Entities
+Identity
+users, tenants, tenant_users, roles, permissions, sessions, devices
+Business Setup
+branches, fiscal_periods, currencies, exchange_rates, tax_codes, numbering_series
+Parties
+parties, party_contacts, party_addresses, party_accounts, payment_terms
+Catalogue
+items, item_units, barcodes, price_lists, item_tax_profiles
+Sales
+sales_invoices, sales_invoice_lines, credit_notes, receipts, payment_allocations
+Purchases
+purchase_bills, purchase_bill_lines, debit_notes, supplier_payments
+Accounting
+accounts, journal_entries, journal_lines, account_balances, period_locks
+Inventory
+warehouses, stock_movements, stock_lots, stock_counts, stock_transfers
+Documents
+document_files, templates, generated_documents
+Compliance
+einvoice_submissions, tax_reports, audit_logs, data_retention_jobs
+Sync
+sync_outbox, sync_cursors, sync_conflicts, idempotency_keys
+6.1 Accounting Integrity Rules
+Every posted source document creates exactly one balanced journal entry or a defined set of linked journal entries inside one database transaction.
+SUM(debit) must equal SUM(credit) before commit. Enforce this through the posting service and a deferred database constraint trigger.
+Posted journal entries cannot be edited or deleted. Corrections use reversal entries and corrected replacement documents.
+Invoice lines store the tax calculation snapshot used at posting time; later tax configuration changes must not rewrite history.
+Closing a fiscal period blocks posting into that period except through an explicitly authorized reopening process.
+All money fields use NUMERIC with an agreed scale. Store transaction currency, exchange rate and base-currency values when multicurrency is introduced.
+6.2 Example Posting Matrix
+Business Event
+Debit
+Credit
+Cash sale
+Cash / Bank
+Sales Revenue + Output VAT
+Credit sale
+Accounts Receivable
+Sales Revenue + Output VAT
+Customer payment
+Cash / Bank
+Accounts Receivable
+Purchase on credit
+Inventory/Expense + Input VAT
+Accounts Payable
+Supplier payment
+Accounts Payable
+Cash / Bank
+Inventory sale cost posting
+Cost of Goods Sold
+Inventory Asset
+Sales return / credit note
+Sales Returns + Output VAT adjustment
+Cash/Receivable
+Inventory adjustment loss
+Inventory Adjustment Expense
+Inventory Asset
+7. Invoice Lifecycle and State Machine
+DRAFT  | validate + reserve posting request  vREADY_TO_POST  | atomic posting transaction  vPOSTED -------> PARTIALLY_PAID -------> PAID  |                    |  |                    +------ payment allocation / reversal  |  +------> E_INVOICE_PENDING -> ACCEPTED / REJECTED  |  +------> CREDIT_NOTE_ISSUED / REVERSEDRules:- A posted invoice is immutable.- Cancellation after posting creates an accounting reversal or credit note.- PDF regeneration never changes financial data.- External e-invoice retries are idempotent.
+7.1 Invoice Numbering
+Offline clients should not permanently assign the final legal invoice number unless they have a preallocated branch/device numbering range. The safest default is to create a local draft reference and allocate the final sequential number during server posting. Number allocation must use an atomic database lock or sequence strategy and must never use MAX(number)+1.
+8. Offline-First Sync Architecture
+Client write -> Local SQLite transaction -> Local Outbox -> Background Sync     -> POST /sync/push with idempotency key     -> Server validates tenant, permissions and business rules     -> Server commits or returns structured conflict     -> Client stores server version and advances sync cursor     -> GET /sync/pull?cursor=... for incremental changes
+Record Type
+Conflict Strategy
+Draft notes and non-financial preferences
+Last-write-wins may be acceptable
+Party and item master data
+Version check; merge safe fields or request user selection
+Invoices, payments and journal-affecting data
+Never silently overwrite; reject or send to reconciliation queue
+Stock movements
+Server validates available stock and movement sequence; conflict requires review
+Numbering collision
+Server assigns final number or rejects preallocated range violation
+Use client-generated UUIDs, device_id, client_created_at, server_updated_at and row_version.
+Every mutation request carries an idempotency key so retries cannot duplicate invoices or payments.
+Incremental pull uses a server-generated cursor, not only client timestamps.
+Sync status must be visible to users: local, syncing, synced, attention required.
+Provide manual Sync Now and a conflict resolution screen for authorized roles.
+9. API Design
+Area
+Example Endpoints
+Authentication
+POST /auth/login, POST /auth/refresh, POST /auth/logout
+Parties
+GET/POST /parties, GET/PATCH /parties/{id}, GET /parties/{id}/statement
+Items
+GET/POST /items, PATCH /items/{id}, GET /items/{id}/stock
+Sales
+POST /sales-invoices, POST /sales-invoices/{id}/post, POST /sales-invoices/{id}/credit-note
+Payments
+POST /receipts, POST /payments/{id}/allocate, POST /payments/{id}/reverse
+Purchases
+POST /purchase-bills, POST /purchase-bills/{id}/post
+Inventory
+POST /stock-transfers, POST /stock-counts, GET /stock-ledger
+Reports
+GET /reports/trial-balance, /profit-loss, /balance-sheet, /vat, /aging
+Sync
+POST /sync/push, GET /sync/pull, GET /sync/conflicts
+Documents
+POST /documents/{type}/{id}/generate, GET /documents/{id}/download
+E-Invoicing
+POST /einvoices/{invoiceId}/submit, GET /einvoices/{invoiceId}/status
+Publish an OpenAPI specification and generate client SDKs.
+Use consistent error envelopes: code, message, fieldErrors, correlationId and retryable.
+Use optimistic concurrency through row_version or ETag for editable master data.
+Use cursor pagination for large lists and explicit filters for branch, date, status and party.
+All write endpoints must be tenant-aware, policy-checked, auditable and idempotent where relevant.
+10. UAE VAT and E-Invoicing Readiness
+The application must separate tax calculation, invoice rendering and external e-invoice exchange. Compliance rules should be versioned and configurable because implementation details and accredited provider requirements may evolve. Before release, a UAE tax professional must validate invoice fields, VAT mappings, retention rules, credit-note handling and reporting outputs.
+VAT categories: standard-rated, zero-rated, exempt and out-of-scope.
+Store seller and buyer legal details, TRN where applicable, invoice type, supply date, currency, tax totals and line-level tax information.
+Generate VAT reports from posted ledger and invoice snapshots, not from editable drafts.
+Define a TaxInvoiceSerializer interface with PDF, thermal and structured XML implementations.
+Create an ASP adapter interface so the platform is not locked to one UAE accredited service provider.
+Store submission payload hash, external reference, status, rejection reason, timestamps and retries.
+Do not treat a PDF or emailed invoice as the final e-invoice integration model.
+interface TaxInvoiceSerializer {  validate(invoiceId: UUID): ValidationResult;  toPdf(invoiceId: UUID, templateId: UUID): FileReference;  toThermal(invoiceId: UUID, width: 58 | 80): EscPosPayload;  toStructuredXml(invoiceId: UUID, profileVersion: string): XmlPayload;}interface EInvoiceProviderAdapter {  submit(payload: XmlPayload, idempotencyKey: string): SubmissionResult;  getStatus(externalReference: string): SubmissionStatus;  cancelOrCredit(reference: string, document: XmlPayload): SubmissionResult;}
+11. Security and Multi-Tenant Isolation
+Control
+Implementation
+Authentication
+Short-lived access token, rotated refresh token, hashed token storage, MFA option
+Authorization
+Central policy service using role + resource + action + tenant + branch
+Tenant isolation
+tenant_id on all owned tables; query scoping plus PostgreSQL RLS defense-in-depth
+Encryption
+TLS in transit; managed encryption at rest; sensitive field encryption where justified
+Audit
+Immutable logs for posting, reversal, role changes, exports and compliance actions
+Secrets
+Cloud secrets manager; no secrets committed to source control
+File access
+Private object storage and short-lived signed URLs
+Abuse protection
+Rate limits, login throttling, device/session revocation and anomaly alerts
+Backups
+Automated encrypted backups and point-in-time recovery with restore drills
+Data lifecycle
+Retention, archive and deletion workflows aligned with legal requirements
+12. Reports and Analytics
+Category
+Reports
+Accounting
+Trial Balance, General Ledger, Journal Register, Profit & Loss, Balance Sheet, Cash Flow
+Receivables/Payables
+Customer aging, supplier aging, statements, outstanding invoices, allocations
+Tax
+VAT summary, VAT detail, output/input tax, exception report, VAT return mapping
+Inventory
+Stock ledger, valuation, movement, low stock, dead stock, warehouse balance
+Sales/Purchases
+Daily sales, item sales, customer sales, margin, purchase analysis, returns
+Audit
+User activity, posted/reversed documents, permission changes, import history
+13. Integrations
+Integration
+Approach
+WhatsApp Business
+Queue PDF generation and template messages; store delivery status and errors
+SMS
+Use UAE-compatible gateway for OTP and fallback notifications
+Email
+Transactional provider with domain authentication and delivery webhooks
+Thermal Printers
+ESC/POS 58mm and 80mm; USB, Bluetooth and network based on platform
+Barcode Scanners
+Keyboard wedge by default; platform-specific SDK only where required
+Excel
+Upload to staging, validate, preview, confirm, then commit asynchronously
+Payment Gateways (future)
+Adapter pattern; never couple accounting posting directly to one gateway
+E-Invoice ASP
+Provider adapter with idempotent submit, status polling/webhook and error mapping
+14. Infrastructure and Deployment
+Production Environment- Managed container platform: AWS ECS/Fargate or Azure Container Apps- Managed PostgreSQL with Multi-AZ/HA and point-in-time recovery- Managed Redis- Private object storage- CDN/WAF for web assets and public API protection- Central logs, metrics, traces and alerting- Separate development, staging and production accounts/projects
+Containerize backend and workers separately even while using the same repository.
+Run database migrations as a controlled deployment step with rollback planning.
+Require manual approval before production deployment.
+Use feature flags for e-invoicing, multicurrency, branches and high-risk accounting changes.
+Choose regional hosting based on customer contracts, sector requirements and data-residency review.
+15. Testing Strategy
+Test Layer
+Minimum Coverage
+Unit tests
+Tax calculations, posting rules, rounding, permissions and state transitions
+Integration tests
+Real PostgreSQL constraints, transactions, rollback, RLS and queues
+Golden accounting tests
+Expected journal lines for every business event and edge case
+API contract tests
+OpenAPI validation, status codes, idempotency and error schemas
+Sync tests
+Offline create/update, retry, duplicate request, conflict and cursor recovery
+End-to-end tests
+Invoice-to-payment, purchase-to-stock, returns, period close and reporting
+Security tests
+Tenant isolation, privilege escalation, session handling and file authorization
+Performance tests
+POS checkout, invoice posting, report queries, imports and sync bursts
+Disaster recovery tests
+Backup restore and point-in-time recovery drills
+16. Recommended Delivery Roadmap
+Phase
+Deliverables
+Phase 0 - Domain Design
+Accounting workshops, chart of accounts, posting matrix, ERD, invoice state machine, VAT validation
+Phase 1 - Core MVP
+Tenant/auth/RBAC, parties, items, sales invoices, receipts, journal engine, PDF, basic reports, mobile offline drafts
+Phase 2 - Full Operations
+Purchases, inventory movements, warehouses, returns/credit notes, imports, accountant web dashboard
+Phase 3 - POS & Communication
+Desktop POS, barcode, thermal printing, WhatsApp/SMS/email, branch controls
+Phase 4 - Compliance Expansion
+VAT return mapping, structured e-invoice serializer, ASP adapter, compliance testing
+Phase 5 - Scale Features
+Multi-currency, bank feeds/reconciliation, advanced analytics, integrations and service extraction if required
+17. MVP Acceptance Criteria
+A business can create a tenant, branch, users, parties and items.
+An authorized user can create and post a sales invoice with correct VAT and balanced journal entries.
+A payment can be received and allocated partially or fully to an invoice.
+Posted records are immutable and can only be corrected through reversal or credit note.
+The system produces party statements, trial balance, P&L, balance sheet and VAT summary from posted data.
+Mobile can create permitted records offline and sync without duplication.
+No user can access another tenant’s data in automated tenant-isolation tests.
+Invoice PDF and thermal receipt are generated from the same canonical invoice data.
+Backups, audit logs, monitoring and a tested restore procedure exist before production launch.
+18. Development Rules
+No controller may write directly to accounting tables.
+Only the Ledger Posting Service can create posted journal entries.
+No FLOAT or DOUBLE for currency or quantities requiring exact decimal handling.
+No hard-coded VAT logic inside UI components or controllers.
+No delete operation for posted financial documents.
+No cross-tenant query without enforced tenant context.
+No external notification or ASP request inside the invoice database transaction; use an outbox/job.
+No production schema changes outside versioned migrations and reviewed deployment pipelines.
+Every critical mutation must create an audit record and carry a correlation ID.
+19. Decisions Required Before Sprint Planning
+Decision
+Owner
+Inventory valuation: weighted average or FIFO
+Product + Accountant
+Final legal invoice numbering policy for offline branches/devices
+Product + Tax Adviser + Architect
+Scope of purchase workflows in MVP
+Product
+Single company vs multi-company per account
+Product
+Branch-level stock and branch-level accounting requirements
+Product + Accountant
+Cash basis vs accrual-only reporting expectations
+Accountant
+Multicurrency launch timing and exchange-rate source
+Product + Accountant
+Selected WhatsApp/SMS providers
+Operations + Engineering
+Cloud provider and hosting region
+Engineering + Compliance
+Selected UAE e-invoice ASP and certification/onboarding process
+Product + Compliance
+20. Developer Handover Checklist
+Approved product requirements and role-permission matrix
+Accounting posting matrix reviewed by an accountant
+ERD and database migration strategy
+OpenAPI contract and shared error format
+Wireframes for mobile POS and web dashboard
+Offline sync protocol and conflict UX
+Invoice/PDF/thermal templates
+Tax and e-invoicing compliance checklist
+Test plan with accounting golden cases
+Dev, staging and production deployment environments

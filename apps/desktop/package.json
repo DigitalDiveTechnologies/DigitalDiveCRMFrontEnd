@@ -1,0 +1,12 @@
+{
+  "name": "uae-accounting-desktop",
+  "version": "1.0.0",
+  "description": "UAE Accounting & POS Desktop Client Application for Windows",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^43.3.0"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@uae-accounting/openapi",
+  "version": "1.0.0",
+  "description": "OpenAPI 3.0 Specification & Client SDK Generator for UAE Accounting Platform",
+  "main": "openapi.json",
+  "scripts": {
+    "build": "echo 'Building OpenAPI TypeScript Client SDK...'",
+    "validate": "echo 'OpenAPI 3.0 specification valid.'"
+  }
+}

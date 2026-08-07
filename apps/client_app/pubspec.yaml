@@ -1,0 +1,35 @@
+name: client_app
+description: "UAE Accounting Platform Multi-platform Client (Mobile & Desktop POS)"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  drift: ^2.14.0
+  sqlite3_flutter_libs: ^0.5.18
+  http: ^1.2.0
+  uuid: ^4.3.3
+  flutter_riverpod: ^2.4.9
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  drift_dev: ^2.14.0
+  build_runner: ^2.4.8
+  msix: ^3.16.7
+
+msix_config:
+  display_name: UAE Accounting Desktop POS
+  publisher_display_name: UAE Accounting Platform LLC
+  identity_name: com.uae.accounting.pos
+  msix_version: 1.0.0.0
+  logo_path: windows/runner/resources/app_icon.ico
+  capabilities: internetClient, location, microphone
+
+flutter:
+  uses-material-design: true
+

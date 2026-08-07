@@ -1,0 +1,55 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "UAE Accounting, Billing & Inventory Platform API",
+    "version": "1.0.0",
+    "description": "Vyapar-class SaaS REST API for UAE SMEs with 5% VAT, E-Invoicing, Double-Entry Ledger, and Offline Sync."
+  },
+  "paths": {
+    "/api/v1/sales-invoices": {
+      "post": {
+        "tags": ["Sales Invoices"],
+        "summary": "Create and post Sales Invoice with 5% UAE VAT",
+        "parameters": [
+          { "name": "x-tenant-id", "in": "header", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "201": { "description": "Sales invoice created and posted to ledger." }
+        }
+      }
+    },
+    "/api/v1/ledger/post-journal": {
+      "post": {
+        "tags": ["General Ledger"],
+        "summary": "Post balanced double-entry manual journal entry",
+        "parameters": [
+          { "name": "x-tenant-id", "in": "header", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "201": { "description": "Journal entry successfully posted." }
+        }
+      }
+    },
+    "/api/v1/sync/push": {
+      "post": {
+        "tags": ["Offline Sync"],
+        "summary": "Ingest client mutations from offline outbox",
+        "parameters": [
+          { "name": "x-tenant-id", "in": "header", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Mutations processed or deduplicated by idempotency key." }
+        }
+      }
+    },
+    "/api/v1/tax/einvoices/submit": {
+      "post": {
+        "tags": ["E-Invoicing"],
+        "summary": "Generate UBL 2.1 E-Invoice XML and submit to ASP",
+        "responses": {
+          "200": { "description": "E-Invoice cleared with SHA-256 hash and QR code." }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "uae-accounting-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Vyapar-class SaaS for UAE SMEs - Accounting, Billing & Inventory Management Platform",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:backend": "npm --prefix apps/backend run start:dev",
+    "dev:web": "npm --prefix apps/web run dev",
+    "desktop": "npm --prefix apps/desktop start",
+    "build:backend": "npm --prefix apps/backend run build",
+    "build:web": "npm --prefix apps/web run build",
+    "test:backend": "npm --prefix apps/backend run test"
+  },
+  "devDependencies": {}
+}
