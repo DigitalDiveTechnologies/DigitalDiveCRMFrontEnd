@@ -1,11 +1,56 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { LedgerPostingService } from './ledger-posting.service';
+import { SequenceService } from './sequence.service';
+import { JournalEntry } from '../../database/entities/journal-entry.entity';
+import { JournalLine } from '../../database/entities/journal-line.entity';
+import { Account } from '../../database/entities/account.entity';
 import { BadRequestException } from '@nestjs/common';
 
 describe('LedgerPostingService', () => {
   let service: LedgerPostingService;
 
-  beforeEach(() => {
-    service = new LedgerPostingService();
+  const mockRepository = {
+    create: jest.fn().mockImplementation(dto => dto),
+    save: jest.fn().mockImplementation(entity => Promise.resolve({ id: 'mock-id', ...entity })),
+    findOne: jest.fn(),
+    manager: {
+      transaction: jest.fn().mockImplementation((cb) => cb({
+        findOne: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockImplementation(dto => dto),
+        save: jest.fn().mockImplementation(entity => Promise.resolve({ id: 'mock-id', ...entity })),
+      })),
+    },
+  };
+
+  const mockSequenceService = {
+    getNextSequence: jest.fn().mockResolvedValue('JRN-1001'),
+  };
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LedgerPostingService,
+        {
+          provide: SequenceService,
+          useValue: mockSequenceService,
+        },
+        {
+          provide: getRepositoryToken(JournalEntry),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(JournalLine),
+          useValue: mockRepository,
+        },
+        {
+          provide: getRepositoryToken(Account),
+          useValue: mockRepository,
+        },
+      ],
+    }).compile();
+
+    service = module.get<LedgerPostingService>(LedgerPostingService);
   });
 
   it('should post balanced journal entry successfully', async () => {

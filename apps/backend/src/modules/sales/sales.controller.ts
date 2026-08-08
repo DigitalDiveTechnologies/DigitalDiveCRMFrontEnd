@@ -1,51 +1,43 @@
 import { Controller, Post, Get, Body, Headers, Param, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
+import { SalesInvoicesService } from './sales-invoices.service';
 import { ReceiptsService, CreateReceiptInput } from './receipts.service';
 import { CreditNoteService, CreateCreditNoteInput } from './credit-note.service';
-import { VatCalculatorService, VatCategory } from '../tax/vat-calculator.service';
-
-export interface CreateInvoiceDto {
-  customerName: string;
-  customerTrn?: string;
-  items: {
-    description: string;
-    quantity: number;
-    unitPrice: number;
-    vatCategory: VatCategory;
-  }[];
-}
 
 @ApiTags('Sales Invoices & Receipts')
 @Controller('sales-invoices')
 export class SalesController {
   constructor(
+    private readonly invoicesService: SalesInvoicesService,
     private readonly receiptsService: ReceiptsService,
     private readonly creditNoteService: CreditNoteService,
-    private readonly vatCalculatorService: VatCalculatorService,
   ) {}
+
+  @Get()
+  @ApiOperation({ summary: 'List all posted sales tax invoices' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  async getSalesInvoices(@Headers('x-tenant-id') tenantId: string = 'tenant-default') {
+    return this.invoicesService.getSalesInvoices(tenantId);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get sales tax invoice by ID' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  async getInvoiceById(
+    @Headers('x-tenant-id') tenantId: string = 'tenant-default',
+    @Param('id') id: string,
+  ) {
+    return this.invoicesService.getInvoiceById(tenantId, id);
+  }
 
   @Post()
   @ApiOperation({ summary: 'Create and post a new Sales Invoice with 5% UAE VAT' })
   @ApiHeader({ name: 'x-tenant-id', required: true, description: 'Tenant UUID' })
   async createSalesInvoice(
     @Headers('x-tenant-id') tenantId: string = 'tenant-default',
-    @Body() dto: CreateInvoiceDto,
+    @Body() dto: any,
   ) {
-    const taxSummary = this.vatCalculatorService.calculateInvoiceTax(dto.items);
-    const invoiceId = `INV-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
-    return {
-      invoiceId,
-      tenantId,
-      customerName: dto.customerName,
-      customerTrn: dto.customerTrn,
-      subtotal: taxSummary.subtotal,
-      totalVat: taxSummary.totalVat,
-      grandTotal: taxSummary.grandTotal,
-      status: 'POSTED',
-      issueDate: new Date().toISOString(),
-      lines: taxSummary.lines,
-    };
+    return this.invoicesService.createSalesInvoice(tenantId, dto);
   }
 
   @Post(':id/receipt')
@@ -54,7 +46,7 @@ export class SalesController {
   async receivePayment(
     @Headers('x-tenant-id') tenantId: string = 'tenant-default',
     @Param('id') invoiceId: string,
-    @Body() dto: Omit<CreateReceiptInput, 'tenantId' | 'invoiceId'>,
+    @Body() dto: any,
   ) {
     return this.receiptsService.processPaymentReceipt({
       ...dto,
@@ -69,7 +61,7 @@ export class SalesController {
   async issueCreditNote(
     @Headers('x-tenant-id') tenantId: string = 'tenant-default',
     @Param('id') invoiceId: string,
-    @Body() dto: Omit<CreateCreditNoteInput, 'tenantId' | 'originalInvoiceId'>,
+    @Body() dto: any,
   ) {
     return this.creditNoteService.issueCreditNote({
       ...dto,

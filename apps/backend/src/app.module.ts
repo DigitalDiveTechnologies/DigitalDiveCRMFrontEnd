@@ -5,13 +5,14 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TaxModule } from './modules/tax/tax.module';
 import { LedgerModule } from './modules/ledger/ledger.module';
-import { SyncModule } from './modules/sync/sync.module';
 import { SalesModule } from './modules/sales/sales.module';
 import { PurchasesModule } from './modules/purchases/purchases.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { ImportModule } from './modules/import/import.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuditLogEntity } from './database/entities/audit-log.entity';
+import { EmailModule } from './modules/email/email.module';
+import { EmployeeModule } from './modules/employee/employee.module';
 
 @Module({
   imports: [
@@ -38,11 +39,12 @@ import { AuditLogEntity } from './database/entities/audit-log.entity';
     AuthModule,
     TaxModule,
     LedgerModule,
-    SyncModule,
     SalesModule,
     PurchasesModule,
     InventoryModule,
     ImportModule,
+    EmailModule,
+    EmployeeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

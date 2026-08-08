@@ -18,7 +18,8 @@ import {
   FileCode,
   CheckCircle2,
   Lock,
-  LogOut
+  LogOut,
+  Mail
 } from 'lucide-react';
 import { getActiveUserRole } from '@/lib/permissions';
 
@@ -32,9 +33,25 @@ interface NavItem {
 export default function Sidebar() {
   const pathname = usePathname();
   const [role, setRole] = useState('OWNER');
+  const [orgName, setOrgName] = useState('FilsDesk ERP');
 
   useEffect(() => {
     setRole(getActiveUserRole());
+    if (typeof window !== 'undefined') {
+      const session = localStorage.getItem('user_session');
+      if (session) {
+        try {
+          const parsed = JSON.parse(session);
+          if (parsed.tenantId === 'tenant-dxb-90210') {
+            setOrgName('Al Futtaim Group');
+          } else if (parsed.tenantId === 'tenant-default') {
+            setOrgName('Al Serkal Group LLC');
+          } else {
+            setOrgName('Assigned Organization');
+          }
+        } catch (e) {}
+      }
+    }
   }, [pathname]);
 
   const allNavItems: NavItem[] = [
@@ -48,6 +65,7 @@ export default function Sidebar() {
     // Operations
     { name: 'Purchases & Bills', href: '/purchases', icon: ShoppingBag, roles: ['OWNER', 'ACCOUNTANT'] },
     { name: 'Warehouse Stock', href: '/inventory', icon: Warehouse, roles: ['OWNER', 'INVENTORY_MANAGER', 'ACCOUNTANT'] },
+    { name: 'Employees & Payroll', href: '/employees', icon: Users, roles: ['OWNER', 'ACCOUNTANT'] },
 
     // Financials
     { name: 'General Ledger', href: '/ledger', icon: BookOpen, roles: ['OWNER', 'ACCOUNTANT'] },
@@ -55,8 +73,9 @@ export default function Sidebar() {
     { name: 'E-Invoicing Gateway', href: '/compliance', icon: FileCode, roles: ['OWNER', 'ACCOUNTANT', 'AUDITOR'] },
     
     // Security & Admin
+    { name: 'Email & SMTP Portal', href: '/email', icon: Mail, roles: ['OWNER'] },
     { name: 'Audit Logs', href: '/settings/audit', icon: ShieldAlert, roles: ['OWNER', 'AUDITOR'] },
-    { name: 'Team Users & RBAC', href: '/settings/users', icon: Shield, roles: ['OWNER'] },
+    { name: 'Organizations & Access', href: '/settings/organizations', icon: Shield, roles: ['OWNER'] },
   ];
 
   const visibleNavItems = allNavItems.filter((item) => item.roles.includes(role));
@@ -98,11 +117,11 @@ export default function Sidebar() {
             FD
           </div>
           <div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#ffffff', letterSpacing: '-0.01em' }}>
-              FilsDesk
+            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#ffffff', letterSpacing: '-0.01em', lineHeight: '1.2' }}>
+              {orgName}
             </div>
-            <div style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <CheckCircle2 size={11} /> 100% Cloud Online
+            <div style={{ fontSize: '0.65rem', color: '#38bdf8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+              <CheckCircle2 size={11} /> Cloud SaaS Active
             </div>
           </div>
         </div>

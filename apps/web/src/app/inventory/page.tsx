@@ -1,99 +1,195 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Warehouse, ArrowRightLeft, AlertOctagon, Plus, Download, X, Lock, CheckCircle2 } from 'lucide-react';
+import { Warehouse, ArrowRightLeft, AlertOctagon, Plus, Download, X, Lock, CheckCircle2, Package } from 'lucide-react';
 import { can, getActiveUserRole } from '@/lib/permissions';
 import { downloadCsv } from '@/lib/exportUtils';
 import { api } from '@/lib/apiClient';
 
-interface MovementRecord {
+interface ItemRecord {
   id: string;
-  type: 'TRANSFER' | 'ADJUSTMENT_LOSS';
+  name: string;
   sku: string;
-  quantity: number;
-  fromWarehouse: string;
-  toWarehouse?: string;
-  reason?: string;
-  date: string;
-  status: string;
+  barcode?: string;
+  currentStock: number;
+  purchasePrice: number;
+  salesPrice: number;
+}
+
+interface WarehouseRecord {
+  id: string;
+  name: string;
+  code: string;
 }
 
 export default function InventoryPage() {
   const [userRole, setUserRole] = useState<string>('OWNER');
   const [canManage, setCanManage] = useState<boolean>(true);
 
-  // Clean state - 0 dummy data
-  const [movements, setMovements] = useState<MovementRecord[]>([]);
+  const [items, setItems] = useState<ItemRecord[]>([]);
+  const [warehouses, setWarehouses] = useState<WarehouseRecord[]>([]);
+  const [movements, setMovements] = useState<any[]>([]);
 
   // Modals
   const [isTransferModalOpen, setIsTransferModalOpen] = useState<boolean>(false);
   const [isLossModalOpen, setIsLossModalOpen] = useState<boolean>(false);
+  const [isItemModalOpen, setIsItemModalOpen] = useState<boolean>(false);
+  
   const [postedSuccess, setPostedSuccess] = useState<boolean>(false);
-  const [successMsg, setSuccessMsg] = useState<string>('');
+  const [successMsg, setSuccessMsg] = useState<string>( '');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // Form states
-  const [sku, setSku] = useState('');
+  const [selectedItemId, setSelectedItemId] = useState('');
   const [quantity, setQuantity] = useState(1);
-  const [fromWh, setFromWh] = useState('wh-dxb-main');
-  const [toWh, setToWh] = useState('wh-aud-mall');
+  const [fromWhId, setFromWhId] = useState('');
+  const [toWhId, setToWhId] = useState('');
   const [lossReason, setLossReason] = useState('');
+  const [adjustedStock, setAdjustedStock] = useState(0);
+
+  // New Item states
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemSku, setNewItemSku] = useState('');
+  const [newItemPrice, setNewItemPrice] = useState(0);
+  const [newItemCost, setNewItemCost] = useState(0);
 
   useEffect(() => {
     const role = getActiveUserRole();
     setUserRole(role);
     setCanManage(can('INVENTORY_WRITE'));
+    loadInitialData();
   }, []);
+
+  const loadInitialData = async () => {
+    setIsLoading(true);
+    try {
+      const fetchedItems = await api.getItems();
+      setItems(fetchedItems || []);
+
+      // Get or seed warehouses
+      let fetchedWarehouses = await api.getWarehouses();
+      if (!fetchedWarehouses || fetchedWarehouses.length === 0) {
+        // Auto-seed default warehouses
+        await api.createWarehouse({ name: 'Dubai Central Depot', code: 'WH-01', address: 'Al Quoz, Dubai' });
+        await api.createWarehouse({ name: 'Abu Dhabi Mall Depot', code: 'WH-02', address: 'Al Khalidiya, Abu Dhabi' });
+        fetchedWarehouses = await api.getWarehouses();
+      }
+      setWarehouses(fetchedWarehouses || []);
+      if (fetchedWarehouses && fetchedWarehouses.length >= 2) {
+        setFromWhId(fetchedWarehouses[0].id);
+        setToWhId(fetchedWarehouses[1].id);
+      }
+    } catch (e) {
+      console.error('Failed to fetch inventory data', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleExecuteTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sku || quantity <= 0 || !canManage) return;
+    if (!selectedItemId || quantity <= 0 || !fromWhId || !toWhId || !canManage) return;
+    setIsLoading(true);
 
-    const record: MovementRecord = {
-      id: `TRF-${Date.now().toString().slice(-6)}`,
-      type: 'TRANSFER',
-      sku,
-      quantity,
-      fromWarehouse: fromWh === 'wh-dxb-main' ? 'Dubai Central Depot (WH-01)' : 'Abu Dhabi Mall Depot (WH-02)',
-      toWarehouse: toWh === 'wh-aud-mall' ? 'Abu Dhabi Mall Depot (WH-02)' : 'Dubai Central Depot (WH-01)',
-      date: new Date().toISOString().substring(0, 10),
-      status: 'COMPLETED',
-    };
+    try {
+      const selectedItem = items.find(i => i.id === selectedItemId);
+      await api.transferStock({
+        itemId: selectedItemId,
+        quantity,
+        sourceWarehouseId: fromWhId,
+        targetWarehouseId: toWhId,
+      });
 
-    setMovements([record, ...movements]);
-    setIsTransferModalOpen(false);
-    setSuccessMsg(`Inter-warehouse stock transfer of ${quantity} units [SKU: ${sku}] successfully executed.`);
-    setPostedSuccess(true);
-    setSku('');
+      setSuccessMsg(`Inter-warehouse stock transfer of ${quantity} units [SKU: ${selectedItem?.sku}] successfully executed.`);
+      setPostedSuccess(true);
+      setIsTransferModalOpen(false);
+      
+      // Clear & reload
+      setSelectedItemId('');
+      setQuantity(1);
+      await loadInitialData();
+
+      setTimeout(() => setPostedSuccess(false), 5000);
+    } catch (e) {
+      console.error(e);
+      alert('Error executing stock transfer.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleWriteOffLoss = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sku || quantity <= 0 || !canManage) return;
+    if (!selectedItemId || !fromWhId || !canManage) return;
+    setIsLoading(true);
 
-    const record: MovementRecord = {
-      id: `ADJ-${Date.now().toString().slice(-6)}`,
-      type: 'ADJUSTMENT_LOSS',
-      sku,
-      quantity,
-      fromWarehouse: fromWh === 'wh-dxb-main' ? 'Dubai Central Depot (WH-01)' : 'Abu Dhabi Mall Depot (WH-02)',
-      reason: lossReason || 'Stock Damage / Write-off',
-      date: new Date().toISOString().substring(0, 10),
-      status: 'POSTED_TO_5050',
-    };
+    try {
+      const selectedItem = items.find(i => i.id === selectedItemId);
+      const res = await api.adjustStock({
+        itemId: selectedItemId,
+        warehouseId: fromWhId,
+        adjustedStock, // The target stock amount
+        unitCost: selectedItem?.purchasePrice || 0,
+        reason: lossReason || 'Stock Damage / Write-off',
+      });
 
-    setMovements([record, ...movements]);
-    setIsLossModalOpen(false);
-    setSuccessMsg(`Inventory loss write-off of ${quantity} units [SKU: ${sku}] posted to Account 5050 Inventory Loss Expense.`);
-    setPostedSuccess(true);
-    setSku('');
-    setLossReason('');
+      setSuccessMsg(`Stock level adjusted for ${selectedItem?.name}. Posted to GL Journal.`);
+      setPostedSuccess(true);
+      setIsLossModalOpen(false);
+
+      setSelectedItemId('');
+      setLossReason('');
+      await loadInitialData();
+
+      setTimeout(() => setPostedSuccess(false), 5000);
+    } catch (e) {
+      console.error(e);
+      alert('Error executing stock write-off.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleExportMovements = () => {
+  const handleCreateItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newItemName || !newItemSku || !canManage) return;
+    setIsLoading(true);
+
+    try {
+      await api.createItem({
+        name: newItemName,
+        sku: newItemSku,
+        unitPrice: newItemPrice,
+        costPrice: newItemCost,
+        stockQuantity: 0,
+        vatCategory: 'STANDARD_5',
+      });
+
+      setSuccessMsg(`Catalogue item "${newItemName}" successfully created.`);
+      setPostedSuccess(true);
+      setIsItemModalOpen(false);
+      
+      // Reset & Reload
+      setNewItemName('');
+      setNewItemSku('');
+      setNewItemPrice(0);
+      setNewItemCost(0);
+      await loadInitialData();
+
+      setTimeout(() => setPostedSuccess(false), 5000);
+    } catch (e) {
+      console.error(e);
+      alert('Error creating item.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleExportItems = () => {
     downloadCsv(
-      'Warehouse_Stock_Movements.csv',
-      ['Movement ID', 'Type', 'SKU Code', 'Quantity', 'From Depot', 'To Depot / Reason', 'Date', 'Status'],
-      movements.map(m => [m.id, m.type, m.sku, m.quantity, m.fromWarehouse, m.toWarehouse || m.reason || 'N/A', m.date, m.status])
+      'Warehouse_Stock_Inventory.csv',
+      ['Item ID', 'SKU Code', 'Item Name', 'Stock On Hand', 'Purchase Price (AED)', 'Sales Price (AED)'],
+      items.map(i => [i.id, i.sku, i.name, i.currentStock, Number(i.purchasePrice).toFixed(2), Number(i.salesPrice).toFixed(2)])
     );
   };
 
@@ -102,23 +198,26 @@ export default function InventoryPage() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700 }}>Warehouse Inventory & Stock Control</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '2px' }}>
-            Multi-warehouse stock transfers, stock adjustment write-offs (Account 5050), and depot movement logs
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#0f172a' }}>Warehouse Inventory & Stock Control</h1>
+          <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '2px' }}>
+            Multi-warehouse stock transfers, stock adjustment write-offs, and dynamic catalog control
           </p>
         </div>
 
         <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={handleExportMovements} className="btn-secondary">
-            <Download size={14} /> Export Log (CSV)
+          <button onClick={handleExportItems} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Download size={14} /> Export Catalogue (CSV)
           </button>
 
           {canManage ? (
             <>
-              <button onClick={() => setIsTransferModalOpen(true)} className="btn-secondary">
+              <button onClick={() => setIsItemModalOpen(true)} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Plus size={16} /> Add Catalog Item
+              </button>
+              <button onClick={() => setIsTransferModalOpen(true)} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <ArrowRightLeft size={16} /> Inter-Warehouse Transfer
               </button>
-              <button onClick={() => setIsLossModalOpen(true)} className="btn-primary">
+              <button onClick={() => setIsLossModalOpen(true)} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <AlertOctagon size={16} /> Record Stock Damage / Loss
               </button>
             </>
@@ -137,42 +236,37 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* Movements Table */}
-      <div className="card-enterprise" style={{ padding: '0', overflow: 'hidden' }}>
-        {movements.length === 0 ? (
+      {/* Item Catalogue list */}
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginBottom: '12px' }}>Active Stock Register</h2>
+      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)' }}>
+        {items.length === 0 ? (
           <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
-            No stock movements or adjustments recorded yet. Use the buttons above to test transfers or stock loss write-offs.
+            No catalogue items registered. Create your first item catalog record above.
           </div>
         ) : (
           <table className="table-enterprise">
             <thead>
               <tr>
-                <th>Reference ID</th>
-                <th>Movement Type</th>
                 <th>SKU Code</th>
-                <th style={{ textAlign: 'center' }}>Quantity</th>
-                <th>Source Depot</th>
-                <th>Destination / Reason</th>
-                <th>Date</th>
+                <th>Item Name</th>
+                <th style={{ textAlign: 'right' }}>Purchase Price (WAC)</th>
+                <th style={{ textAlign: 'right' }}>Sales Price</th>
+                <th style={{ textAlign: 'center' }}>Stock on Hand</th>
                 <th style={{ textAlign: 'center' }}>Status</th>
               </tr>
             </thead>
             <tbody>
-              {movements.map((m) => (
-                <tr key={m.id}>
-                  <td style={{ fontWeight: 700, color: '#2563eb' }}>{m.id}</td>
-                  <td>
-                    <span className={m.type === 'TRANSFER' ? 'badge-status badge-status-blue' : 'badge-status badge-status-amber'}>
-                      {m.type}
-                    </span>
+              {items.map((i) => (
+                <tr key={i.id}>
+                  <td style={{ fontFamily: 'monospace', fontWeight: 700, color: '#2563eb' }}>{i.sku}</td>
+                  <td style={{ fontWeight: 600, color: '#0f172a' }}>{i.name}</td>
+                  <td style={{ textAlign: 'right' }} className="num-tabular">AED {Number(i.purchasePrice || 0).toFixed(2)}</td>
+                  <td style={{ textAlign: 'right' }} className="num-tabular">AED {Number(i.salesPrice || 0).toFixed(2)}</td>
+                  <td style={{ textAlign: 'center', fontWeight: 700, color: i.currentStock > 5 ? '#0f172a' : '#ef4444' }} className="num-tabular">
+                    {i.currentStock} units
                   </td>
-                  <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{m.sku}</td>
-                  <td style={{ textAlign: 'center', fontWeight: 700 }} className="num-tabular">{m.quantity} units</td>
-                  <td style={{ fontSize: '0.82rem' }}>{m.fromWarehouse}</td>
-                  <td style={{ fontSize: '0.82rem', color: '#64748b' }}>{m.toWarehouse || m.reason}</td>
-                  <td style={{ fontSize: '0.82rem', color: '#64748b' }}>{m.date}</td>
                   <td style={{ textAlign: 'center' }}>
-                    <span className="badge-status badge-status-green">{m.status}</span>
+                    <span className="badge-status badge-status-green">ACTIVE</span>
                   </td>
                 </tr>
               ))}
@@ -180,6 +274,78 @@ export default function InventoryPage() {
           </table>
         )}
       </div>
+
+      {/* Add Catalog Item Modal */}
+      {isItemModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div className="card-enterprise" style={{ width: '480px', maxWidth: '95%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Package size={18} color="#2563eb" /> Add Catalogue Item
+              </h3>
+              <button onClick={() => setIsItemModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateItem}>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Item Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. POS Thermal Printer"
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>SKU Code *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. PRN-80-ESC"
+                  value={newItemSku}
+                  onChange={(e) => setNewItemSku(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem', fontFamily: 'monospace' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Purchase Cost (AED)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={newItemCost}
+                    onChange={(e) => setNewItemCost(parseFloat(e.target.value) || 0)}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Sales Price (AED)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={newItemPrice}
+                    onChange={(e) => setNewItemPrice(parseFloat(e.target.value) || 0)}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button type="button" onClick={() => setIsItemModalOpen(false)} className="btn-secondary">Cancel</button>
+                <button type="submit" className="btn-primary">Create Item</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Transfer Modal */}
       {isTransferModalOpen && (
@@ -196,15 +362,18 @@ export default function InventoryPage() {
 
             <form onSubmit={handleExecuteTransfer}>
               <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Item SKU Code *</label>
-                <input
-                  type="text"
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Select Stock Item *</label>
+                <select
                   required
-                  placeholder="e.g. PRN-80"
-                  value={sku}
-                  onChange={(e) => setSku(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem', fontFamily: 'monospace' }}
-                />
+                  value={selectedItemId}
+                  onChange={(e) => setSelectedItemId(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
+                >
+                  <option value="">-- Select Item --</option>
+                  {items.map(i => (
+                    <option key={i.id} value={i.id}>{i.name} (SKU: {i.sku}, Stock: {i.currentStock})</option>
+                  ))}
+                </select>
               </div>
 
               <div style={{ marginBottom: '12px' }}>
@@ -223,23 +392,25 @@ export default function InventoryPage() {
                 <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>From Source Depot</label>
                   <select
-                    value={fromWh}
-                    onChange={(e) => setFromWh(e.target.value)}
+                    value={fromWhId}
+                    onChange={(e) => setFromWhId(e.target.value)}
                     style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
                   >
-                    <option value="wh-dxb-main">Dubai Central Depot (WH-01)</option>
-                    <option value="wh-aud-mall">Abu Dhabi Mall Depot (WH-02)</option>
+                    {warehouses.map(w => (
+                      <option key={w.id} value={w.id}>{w.name}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>To Destination Depot</label>
                   <select
-                    value={toWh}
-                    onChange={(e) => setToWh(e.target.value)}
+                    value={toWhId}
+                    onChange={(e) => setToWhId(e.target.value)}
                     style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
                   >
-                    <option value="wh-aud-mall">Abu Dhabi Mall Depot (WH-02)</option>
-                    <option value="wh-dxb-main">Dubai Central Depot (WH-01)</option>
+                    {warehouses.map(w => (
+                      <option key={w.id} value={w.id}>{w.name}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -268,27 +439,48 @@ export default function InventoryPage() {
 
             <form onSubmit={handleWriteOffLoss}>
               <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Item SKU Code *</label>
-                <input
-                  type="text"
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Select Damaged Item *</label>
+                <select
                   required
-                  placeholder="e.g. PRN-80"
-                  value={sku}
-                  onChange={(e) => setSku(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem', fontFamily: 'monospace' }}
-                />
+                  value={selectedItemId}
+                  onChange={(e) => {
+                    setSelectedItemId(e.target.value);
+                    const selected = items.find(i => i.id === e.target.value);
+                    setAdjustedStock(selected ? Math.max(0, selected.currentStock - 1) : 0);
+                  }}
+                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
+                >
+                  <option value="">-- Select Item --</option>
+                  {items.map(i => (
+                    <option key={i.id} value={i.id}>{i.name} (SKU: {i.sku}, Stock: {i.currentStock})</option>
+                  ))}
+                </select>
               </div>
 
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Quantity Lost / Damaged *</label>
-                <input
-                  type="number"
-                  min="1"
-                  required
-                  value={quantity}
-                  onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Source Warehouse</label>
+                  <select
+                    value={fromWhId}
+                    onChange={(e) => setFromWhId(e.target.value)}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
+                  >
+                    {warehouses.map(w => (
+                      <option key={w.id} value={w.id}>{w.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>New Actual Stock Level *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={adjustedStock}
+                    onChange={(e) => setAdjustedStock(parseInt(e.target.value) || 0)}
+                    style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
+                  />
+                </div>
               </div>
 
               <div style={{ marginBottom: '16px' }}>

@@ -1,73 +1,49 @@
 'use client';
 
 import React, { useState } from 'react';
-import { 
-  Lock, 
-  Mail, 
-  ShieldCheck, 
-  ArrowRight, 
-  Building, 
-  Globe, 
-  User, 
-  FileText, 
-  Printer, 
-  Warehouse,
-  CheckCircle2
-} from 'lucide-react';
+import { Lock, Mail, ArrowRight, CheckCircle2, Loader } from 'lucide-react';
 
-interface RoleOption {
-  role: string;
-  label: string;
-  name: string;
-  desc: string;
-  color: string;
-  icon: any;
-  email: string;
-}
-
-const roleOptions: RoleOption[] = [
-  { role: 'OWNER', label: 'Owner / Admin', name: 'Rashid Al Nuaimi', desc: 'Full platform access & company management', color: '#1e293b', icon: User, email: 'owner@alfuttaim.ae' },
-  { role: 'ACCOUNTANT', label: 'Accountant', name: 'Saeed Al Maktoum', desc: 'General ledger, purchases & VAT returns', color: '#0284c7', icon: FileText, email: 'accountant@alfuttaim.ae' },
-  { role: 'BILLER_CASHIER', label: 'Biller / Cashier', name: 'Tariq Mansoor', desc: 'POS billing counter & retail sales invoices only', color: '#059669', icon: Printer, email: 'biller@alfuttaim.ae' },
-  { role: 'INVENTORY_MANAGER', label: 'Inventory Manager', name: 'Hamdan Al Hamadi', desc: 'Warehouse stock levels & SKU catalogue only', color: '#6d28d9', icon: Warehouse, email: 'inventory@alfuttaim.ae' },
-  { role: 'AUDITOR', label: 'Auditor', name: 'Fatima Al Mansoori', desc: 'Read-only audit trail & VAT compliance', color: '#d97706', icon: ShieldCheck, email: 'auditor@alfuttaim.ae' },
-];
-
-export default function CleanFlatLoginPage() {
-  const [selectedRole, setSelectedRole] = useState<RoleOption>(roleOptions[0]);
-  const [email, setEmail] = useState(roleOptions[0].email);
-  const [password, setPassword] = useState('••••••••••••');
+export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const handleSelectRole = (opt: RoleOption) => {
-    setSelectedRole(opt);
-    setEmail(opt.email);
-  };
-
-  const performLogin = (opt: RoleOption) => {
-    setIsLoading(true);
-
-    const sessionData = {
-      userId: `usr-${Date.now()}`,
-      email: opt.email,
-      name: opt.name,
-      role: opt.role,
-      tenantId: 'tenant-dxb-90210',
-      accessToken: `jwt-bearer-signed-${Date.now()}`,
-    };
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('user_session', JSON.stringify(sessionData));
-      localStorage.setItem('active_user_role', sessionData.role);
-      setTimeout(() => {
-        window.location.href = '/';
-      }, 350);
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    performLogin(selectedRole);
+    setIsLoading(true);
+    setErrorMsg('');
+
+    try {
+      const response = await fetch('http://localhost:3001/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.message || 'Invalid credentials. Please check your email and password.');
+      }
+
+      const data = await response.json();
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('user_session', JSON.stringify({
+          userId: data.userId,
+          email: data.email,
+          name: data.name,
+          role: data.role,
+          tenantId: data.tenantId,
+          accessToken: data.accessToken,
+        }));
+        localStorage.setItem('active_user_role', data.role);
+        window.location.href = '/';
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Login failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -78,10 +54,9 @@ export default function CleanFlatLoginPage() {
       fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       background: '#faf9f5',
     }}>
-      {/* ---------------- LEFT HALF: CLEAN FLAT ENTERPRISE SHOWCASE ---------------- */}
+      {/* ---- LEFT: Branding Panel ---- */}
       <div style={{
         background: '#1e293b',
-        borderRight: '1px solid #334155',
         padding: '60px 48px',
         display: 'flex',
         flexDirection: 'column',
@@ -91,163 +66,173 @@ export default function CleanFlatLoginPage() {
         {/* Brand Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <div style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '8px',
-            background: '#2563eb',
-            color: '#ffffff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 700,
-            fontSize: '1.1rem',
-          }}>
-            FD
-          </div>
+            width: '44px', height: '44px', borderRadius: '10px',
+            background: '#2563eb', color: '#ffffff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontWeight: 800, fontSize: '1.1rem',
+          }}>FD</div>
           <div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', letterSpacing: '-0.01em' }}>FilsDesk</div>
-            <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>100% Online Cloud Accounting & POS Platform</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: 700, letterSpacing: '-0.01em' }}>FilsDesk</div>
+            <div style={{ fontSize: '0.76rem', color: '#94a3b8' }}>Cloud Accounting & POS Platform</div>
           </div>
         </div>
 
-        {/* Center Overview */}
+        {/* Features */}
         <div style={{ margin: '40px 0' }}>
           <div style={{
-            display: 'inline-block',
-            background: '#0f172a',
-            border: '1px solid #334155',
-            padding: '6px 14px',
-            borderRadius: '6px',
-            fontSize: '0.78rem',
-            color: '#10b981',
-            fontWeight: 600,
-            marginBottom: '20px',
+            display: 'inline-block', background: '#0f172a', border: '1px solid #334155',
+            padding: '6px 14px', borderRadius: '6px', fontSize: '0.75rem',
+            color: '#10b981', fontWeight: 600, marginBottom: '20px',
           }}>
-            100% Real-Time Cloud Server Connected
+            ✓ 100% Real-Time Cloud Connected
           </div>
 
-          <h2 style={{ fontSize: '2.2rem', fontWeight: 700, color: '#ffffff', lineHeight: '1.25', marginBottom: '16px' }}>
-            Simple, Intuitive Online ERP
+          <h2 style={{ fontSize: '2.1rem', fontWeight: 700, lineHeight: '1.25', marginBottom: '16px' }}>
+            Built for UAE Businesses
           </h2>
-          <p style={{ color: '#94a3b8', fontSize: '0.95rem', lineHeight: '1.6', maxWidth: '460px', marginBottom: '32px' }}>
-            Every user gets a simple, focused workspace matching their daily role — connected 100% online to your central database.
+          <p style={{ color: '#94a3b8', fontSize: '0.9rem', lineHeight: '1.65', maxWidth: '440px', marginBottom: '32px' }}>
+            Every user gets a focused workspace matching their daily role — Accountant, Cashier, or Owner — connected 100% online to your central database.
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {[
-              'Clean screens customized for cashiers, stock managers, and accountants',
               'Automatic 5% UAE VAT calculation & FTA Form 201 returns',
-              'Instant cloud database persistence across all branches',
+              'POS receipts with your company logo & custom settings',
+              'Instant cloud database sync across all branches',
             ].map((feat, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.86rem', color: '#cbd5e1' }}>
-                <CheckCircle2 size={16} color="#10b981" />
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem', color: '#cbd5e1' }}>
+                <CheckCircle2 size={15} color="#10b981" />
                 <span>{feat}</span>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Footer info */}
-        <div style={{ display: 'flex', gap: '20px', fontSize: '0.8rem', color: '#64748b' }}>
+        <div style={{ display: 'flex', gap: '20px', fontSize: '0.78rem', color: '#475569' }}>
           <span>FTA VAT 201 Ready</span>
-          <span>•</span>
-          <span>Double-Entry Engine</span>
-          <span>•</span>
-          <span>100% Online Cloud</span>
+          <span>•</span><span>Double-Entry Engine</span>
+          <span>•</span><span>Multi-Branch Support</span>
         </div>
       </div>
 
-      {/* ---------------- RIGHT HALF: ROLE SELECTOR & SIGN IN ---------------- */}
+      {/* ---- RIGHT: Login Form ---- */}
       <div style={{
-        padding: '50px 48px',
+        padding: '60px 48px',
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
         background: '#faf9f5',
-        overflowY: 'auto',
       }}>
-        <div style={{ maxWidth: '440px', width: '100%', margin: '0 auto' }}>
-          <div style={{ marginBottom: '24px' }}>
-            <h2 style={{ fontSize: '1.6rem', fontWeight: 700, color: '#1e293b' }}>
-              Sign In to FilsDesk
+        <div style={{ maxWidth: '400px', width: '100%', margin: '0 auto' }}>
+          <div style={{ marginBottom: '32px' }}>
+            <h2 style={{ fontSize: '1.7rem', fontWeight: 700, color: '#1e293b', marginBottom: '6px' }}>
+              Sign In
             </h2>
-            <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '4px' }}>
-              Select your role below to open your online cloud workspace:
+            <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
+              Enter your account credentials to continue.
             </p>
           </div>
 
-          {/* 1-Click Role Quick Selection Cards */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '24px' }}>
-            {roleOptions.map((opt) => {
-              const Icon = opt.icon;
-              const isSelected = selectedRole.role === opt.role;
-              return (
-                <div
-                  key={opt.role}
-                  onClick={() => handleSelectRole(opt)}
+          {/* Error Banner */}
+          {errorMsg && (
+            <div style={{
+              background: '#fef2f2', border: '1px solid #fecaca',
+              borderRadius: '8px', padding: '12px 14px',
+              fontSize: '0.85rem', color: '#dc2626',
+              marginBottom: '20px', display: 'flex', gap: '8px', alignItems: 'center',
+            }}>
+              ⚠ {errorMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Email */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>
+                Email Address
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Mail size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+                <input
+                  id="login-email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  placeholder="owner@yourcompany.ae"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '12px 14px',
-                    borderRadius: '8px',
-                    border: isSelected ? `2px solid ${opt.color}` : '1px solid #cbd5e1',
-                    background: isSelected ? '#ffffff' : '#faf9f5',
-                    cursor: 'pointer',
-                    transition: 'all 0.12s ease',
+                    width: '100%', padding: '10px 12px 10px 36px',
+                    border: '1px solid #d1d5db', borderRadius: '8px',
+                    fontSize: '0.9rem', outline: 'none',
+                    boxSizing: 'border-box',
                   }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{
-                      width: '34px',
-                      height: '34px',
-                      borderRadius: '6px',
-                      background: isSelected ? opt.color : '#e2e8f0',
-                      color: isSelected ? '#ffffff' : '#475569',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}>
-                      <Icon size={16} />
-                    </div>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.86rem', color: '#1e293b' }}>{opt.label}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{opt.desc}</div>
-                    </div>
-                  </div>
+                />
+              </div>
+            </div>
 
-                  <input
-                    type="radio"
-                    name="roleSelection"
-                    checked={isSelected}
-                    onChange={() => handleSelectRole(opt)}
-                    style={{ accentColor: opt.color, width: '16px', height: '16px' }}
-                  />
-                </div>
-              );
-            })}
+            {/* Password */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#374151', marginBottom: '6px' }}>
+                Password
+              </label>
+              <div style={{ position: 'relative' }}>
+                <Lock size={15} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+                <input
+                  id="login-password"
+                  type="password"
+                  required
+                  autoComplete="current-password"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  style={{
+                    width: '100%', padding: '10px 12px 10px 36px',
+                    border: '1px solid #d1d5db', borderRadius: '8px',
+                    fontSize: '0.9rem', outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Submit */}
+            <button
+              id="login-submit-btn"
+              type="submit"
+              disabled={isLoading}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                width: '100%', padding: '12px',
+                background: isLoading ? '#3b82f6' : '#1e40af',
+                color: '#ffffff', fontWeight: 700, fontSize: '0.92rem',
+                border: 'none', borderRadius: '8px', cursor: isLoading ? 'not-allowed' : 'pointer',
+                transition: 'background 0.15s ease',
+                marginTop: '4px',
+              }}
+            >
+              {isLoading ? (
+                <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> Signing In...</>
+              ) : (
+                <>Sign In <ArrowRight size={15} /></>
+              )}
+            </button>
+          </form>
+
+          {/* Hint */}
+          <div style={{
+            marginTop: '28px', padding: '14px', background: '#f0f9ff',
+            border: '1px solid #bae6fd', borderRadius: '8px',
+            fontSize: '0.8rem', color: '#0369a1', lineHeight: '1.6',
+          }}>
+            <strong>Default Owner Account:</strong><br />
+            Email: <code>owner@digitaldive.ae</code><br />
+            Password: <code>admin</code>
           </div>
-
-          <button
-            type="button"
-            onClick={() => performLogin(selectedRole)}
-            disabled={isLoading}
-            className="btn-primary"
-            style={{
-              width: '100%',
-              padding: '12px',
-              justifyContent: 'center',
-              fontSize: '0.92rem',
-              borderRadius: '8px',
-              fontWeight: 700,
-              background: selectedRole.color,
-              borderColor: selectedRole.color,
-            }}
-          >
-            {isLoading ? 'Opening Cloud Workspace...' : `Sign In as ${selectedRole.label}`} <ArrowRight size={16} />
-          </button>
         </div>
       </div>
+
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

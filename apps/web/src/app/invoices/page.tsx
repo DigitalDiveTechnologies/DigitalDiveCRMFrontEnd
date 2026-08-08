@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { FileText, Printer, Download, CheckCircle2, AlertCircle, Plus, Eye, Lock, Trash2 } from 'lucide-react';
+import { FileText, Printer, Download, CheckCircle2, AlertCircle, Plus, Eye, Lock, Trash2, User } from 'lucide-react';
 import { can, getActiveUserRole } from '@/lib/permissions';
 import { downloadCsv } from '@/lib/exportUtils';
 import { api } from '@/lib/apiClient';
@@ -17,10 +17,9 @@ export default function SalesInvoicingPage() {
   const [userRole, setUserRole] = useState<string>('OWNER');
   const [canCreate, setCanCreate] = useState<boolean>(true);
 
-  // Clean state - 0 initial dummy data
   const [invoices, setInvoices] = useState<any[]>([]);
-  const [customerName, setCustomerName] = useState('');
-  const [customerTrn, setCustomerTrn] = useState('');
+  const [parties, setParties] = useState<any[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [lines, setLines] = useState<InvoiceLineItem[]>([]);
 
   // Line creation input
@@ -29,15 +28,33 @@ export default function SalesInvoicingPage() {
   const [newLinePrice, setNewLinePrice] = useState(0);
   const [newLineVatCategory, setNewLineVatCategory] = useState<'STANDARD_5' | 'ZERO_0' | 'EXEMPT'>('STANDARD_5');
 
-  const [activeTab, setActiveTab] = useState<'create' | 'list' | 'thermal' | 'xml'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'list'>('create');
   const [postedSuccess, setPostedSuccess] = useState<boolean>(false);
-  const [postedJournalId, setPostedJournalId] = useState<string>('');
+  const [postedInvoiceNumber, setPostedInvoiceNumber] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   useEffect(() => {
     const role = getActiveUserRole();
     setUserRole(role);
     setCanCreate(can('CREATE_INVOICE'));
+    loadInitialData();
   }, []);
+
+  const loadInitialData = async () => {
+    setIsLoading(true);
+    try {
+      const [fetchedInvoices, fetchedParties] = await Promise.all([
+        api.getInvoices(),
+        api.getParties(),
+      ]);
+      setInvoices(fetchedInvoices || []);
+      setParties(fetchedParties?.filter((p: any) => p.partyType === 'CUSTOMER' || p.partyType === 'BOTH') || []);
+    } catch (e) {
+      console.error('Failed to load sales invoicing page data', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleAddLine = (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,37 +81,48 @@ export default function SalesInvoicingPage() {
   const grandTotal = subtotal + totalVat;
 
   const handlePostInvoice = async () => {
-    if (!canCreate || lines.length === 0 || !customerName) return;
+    if (!canCreate || lines.length === 0 || !selectedCustomerId) return;
+    setIsLoading(true);
 
-    const jId = `JRN-${Date.now().toString().slice(-6)}`;
-    const invId = `INV-${Date.now().toString().slice(-6)}`;
-
-    const newInvoice = {
-      id: invId,
-      journalId: jId,
-      customerName,
-      customerTrn: customerTrn || 'N/A',
-      lines: [...lines],
-      subtotal,
-      vatTotal: totalVat,
-      grandTotal,
-      issueDate: new Date().toISOString().substring(0, 10),
-      status: 'POSTED',
-    };
-
-    setInvoices([newInvoice, ...invoices]);
-    setPostedJournalId(jId);
-    setPostedSuccess(true);
-
-    // Call REST API
     try {
-      await api.createSalesInvoice(newInvoice);
-    } catch (e) {}
+      const response = await api.createSalesInvoice({
+        customerId: selectedCustomerId,
+        items: lines,
+        invoiceDate: new Date().toISOString(),
+      });
+
+      setPostedInvoiceNumber(response.invoiceNumber);
+      setPostedSuccess(true);
+      setLines([]);
+      setSelectedCustomerId('');
+      
+      // Refresh registry
+      const fetchedInvoices = await api.getInvoices();
+      setInvoices(fetchedInvoices || []);
+      
+      // Switch view after timeout
+      setTimeout(() => {
+        setPostedSuccess(false);
+      }, 5000);
+    } catch (e) {
+      console.error('Failed to post sales invoice to server', e);
+      alert('Error: Failed to post invoice to backend server database.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleExportInvoice = () => {
-    const headers = ['Invoice No', 'Customer Name', 'TRN', 'Subtotal (AED)', 'VAT Total (AED)', 'Grand Total (AED)', 'Status'];
-    const rows = invoices.map(i => [i.id, i.customerName, i.customerTrn, i.subtotal, i.vatTotal, i.grandTotal, i.status]);
+    const headers = ['Invoice No', 'Customer Name', 'Subtotal (AED)', 'VAT Total (AED)', 'Grand Total (AED)', 'Status', 'Date'];
+    const rows = invoices.map(i => [
+      i.invoiceNumber, 
+      i.customer?.name || 'Unknown', 
+      Number(i.subtotal).toFixed(2), 
+      Number(i.vatTotal).toFixed(2), 
+      Number(i.grandTotal).toFixed(2), 
+      i.status,
+      new Date(i.invoiceDate).toLocaleDateString()
+    ]);
     downloadCsv('Sales_Tax_Invoices_Registry.csv', headers, rows);
   };
 
@@ -103,18 +131,18 @@ export default function SalesInvoicingPage() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700 }}>Sales Invoicing & Billing</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '2px' }}>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#0f172a' }}>Sales Invoicing & Billing</h1>
+          <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '2px' }}>
             Tax Invoice Generation, 5% Standard VAT Calculation, and Double-Entry Ledger Posting
           </p>
         </div>
 
         <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={handleExportInvoice} className="btn-secondary">
+          <button onClick={handleExportInvoice} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Download size={14} /> Export Invoices (CSV)
           </button>
           {canCreate ? (
-            <button onClick={handlePostInvoice} disabled={lines.length === 0 || !customerName} className="btn-primary">
+            <button onClick={handlePostInvoice} disabled={lines.length === 0 || !selectedCustomerId || isLoading} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <FileText size={16} /> Post Tax Invoice to Ledger
             </button>
           ) : (
@@ -140,7 +168,7 @@ export default function SalesInvoicingPage() {
             <CheckCircle2 size={16} /> Invoice Successfully Posted to Ledger!
           </div>
           <div style={{ marginTop: '4px' }}>
-            Posted Journal Entry <strong>{postedJournalId}</strong> (Debits == Credits == AED {grandTotal.toFixed(2)}). Document is locked and immutable.
+            Posted Invoice <strong>{postedInvoiceNumber}</strong>. Double-entry entries created and email notification dispatched. Document is now locked and immutable.
           </div>
         </div>
       )}
@@ -182,32 +210,27 @@ export default function SalesInvoicingPage() {
 
       {/* Create Tax Invoice View */}
       {activeTab === 'create' && (
-        <div className="card-enterprise" style={{ background: '#ffffff', padding: '32px' }}>
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#0f172a', marginBottom: '20px' }}>Invoice Details & Customer TRN</h2>
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '32px', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)' }}>
+          <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#0f172a', marginBottom: '20px' }}>Select Customer Entity</h2>
 
-          {/* Customer Info Form */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Customer Entity Name *</label>
-              <input
-                type="text"
-                placeholder="e.g. Al Serkal Group LLC"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>15-Digit UAE Customer TRN (Optional)</label>
-              <input
-                type="text"
-                placeholder="e.g. 100293847500003"
-                value={customerTrn}
-                onChange={(e) => setCustomerTrn(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem', fontFamily: 'monospace' }}
-              />
-            </div>
+          {/* Customer Selection Dropdown */}
+          <div style={{ marginBottom: '24px' }}>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Registered Customer *</label>
+            <select
+              value={selectedCustomerId}
+              onChange={(e) => setSelectedCustomerId(e.target.value)}
+              style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
+            >
+              <option value="">-- Choose customer --</option>
+              {parties.map((party) => (
+                <option key={party.id} value={party.id}>
+                  {party.name} {party.trn ? `(TRN: ${party.trn})` : ''}
+                </option>
+              ))}
+            </select>
+            {parties.length === 0 && (
+              <p style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '4px' }}>No registered customers found. Please add a customer under the "Parties" section first.</p>
+            )}
           </div>
 
           {/* Add Item Line Form */}
@@ -299,7 +322,7 @@ export default function SalesInvoicingPage() {
                     <td style={{ textAlign: 'right' }} className="num-tabular">{calculateLineSubtotal(l).toFixed(2)}</td>
                     <td style={{ textAlign: 'right', fontWeight: 600, color: '#059669' }} className="num-tabular">{calculateLineVat(l).toFixed(2)}</td>
                     <td style={{ textAlign: 'center' }}>
-                      <button onClick={() => handleRemoveLine(idx)} style={{ border: 'none', background: 'none', color: '#dc2626', cursor: 'pointer' }}>
+                      <button type="button" onClick={() => handleRemoveLine(idx)} style={{ border: 'none', background: 'none', color: '#dc2626', cursor: 'pointer' }}>
                         <Trash2 size={14} />
                       </button>
                     </td>
@@ -331,7 +354,7 @@ export default function SalesInvoicingPage() {
 
       {/* Posted Invoices Registry */}
       {activeTab === 'list' && (
-        <div className="card-enterprise" style={{ padding: '0', overflow: 'hidden' }}>
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)' }}>
           {invoices.length === 0 ? (
             <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
               No posted sales tax invoices yet. Create your first invoice using the "Create New Tax Invoice" tab.
@@ -353,15 +376,15 @@ export default function SalesInvoicingPage() {
               <tbody>
                 {invoices.map((inv) => (
                   <tr key={inv.id}>
-                    <td style={{ fontWeight: 700, color: '#2563eb' }}>{inv.id}</td>
-                    <td style={{ fontWeight: 600, color: '#0f172a' }}>{inv.customerName}</td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{inv.customerTrn}</td>
-                    <td style={{ fontSize: '0.82rem', color: '#64748b' }}>{inv.issueDate}</td>
-                    <td style={{ textAlign: 'right' }} className="num-tabular">AED {(inv.subtotal || 0).toFixed(2)}</td>
-                    <td style={{ textAlign: 'right', color: '#059669', fontWeight: 600 }} className="num-tabular">AED {(inv.vatTotal || 0).toFixed(2)}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 800 }} className="num-tabular">AED {(inv.grandTotal || 0).toFixed(2)}</td>
+                    <td style={{ fontWeight: 700, color: '#2563eb' }}>{inv.invoiceNumber}</td>
+                    <td style={{ fontWeight: 600, color: '#0f172a' }}>{inv.customer?.name || 'Unknown'}</td>
+                    <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{inv.customer?.trn || 'N/A'}</td>
+                    <td style={{ fontSize: '0.82rem', color: '#64748b' }}>{inv.invoiceDate ? new Date(inv.invoiceDate).toLocaleDateString() : 'N/A'}</td>
+                    <td style={{ textAlign: 'right' }} className="num-tabular">AED {Number(inv.subtotal || 0).toFixed(2)}</td>
+                    <td style={{ textAlign: 'right', color: '#059669', fontWeight: 600 }} className="num-tabular">AED {Number(inv.vatTotal || 0).toFixed(2)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 800 }} className="num-tabular">AED {Number(inv.grandTotal || 0).toFixed(2)}</td>
                     <td style={{ textAlign: 'center' }}>
-                      <span className="badge-status badge-status-green">POSTED</span>
+                      <span className="badge-status badge-status-green">{inv.status || 'POSTED'}</span>
                     </td>
                   </tr>
                 ))}

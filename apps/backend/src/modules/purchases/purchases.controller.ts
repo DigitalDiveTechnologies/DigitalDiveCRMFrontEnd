@@ -12,7 +12,7 @@ export class PurchasesController {
   @ApiHeader({ name: 'x-tenant-id', required: true, description: 'Tenant UUID' })
   async postPurchaseBill(
     @Headers('x-tenant-id') tenantId: string = 'tenant-default',
-    @Body() dto: Omit<CreatePurchaseBillInput, 'tenantId'>,
+    @Body() dto: any,
   ) {
     return this.purchasesService.postPurchaseBill({
       ...dto,
@@ -24,17 +24,6 @@ export class PurchasesController {
   @ApiOperation({ summary: 'List purchase bills' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   async getPurchaseBills(@Headers('x-tenant-id') tenantId: string = 'tenant-default') {
-    return [
-      {
-        billId: 'BILL-1001',
-        supplierName: 'Emirates Industrial Supplies',
-        supplierBillNumber: 'SUPP-8891',
-        subtotal: 10000.0,
-        inputVatTotal: 500.0,
-        grandTotal: 10500.0,
-        status: 'POSTED',
-        billDate: new Date().toISOString(),
-      },
-    ];
+    return this.purchasesService.getPurchaseBills(tenantId);
   }
 }

@@ -1,56 +1,126 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Printer, ShoppingCart, Plus, Minus, Trash2, CheckCircle2, CreditCard, DollarSign, Lock } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Printer, ShoppingCart, Plus, Minus, Trash2, CheckCircle2,
+  Settings, Image, X, Edit3
+} from 'lucide-react';
 import { can, getActiveUserRole } from '@/lib/permissions';
+import { api } from '@/lib/apiClient';
 
 interface CartItem {
-  id: string;
+  itemId: string;
   name: string;
+  sku: string;
   price: number;
   qty: number;
 }
 
+interface ReceiptSettings {
+  companyName: string;
+  address: string;
+  phone: string;
+  trn: string;
+  footerMessage: string;
+  logoUrl: string; // base64 or empty
+}
+
+const DEFAULT_RECEIPT: ReceiptSettings = {
+  companyName: 'Digital Dive Technologies',
+  address: 'Dubai, United Arab Emirates',
+  phone: '+971 4 000 0000',
+  trn: '100293847500003',
+  footerMessage: 'Thank you for shopping with us! VAT Reg. applicable.',
+  logoUrl: '',
+};
+
+function loadReceiptSettings(): ReceiptSettings {
+  if (typeof window === 'undefined') return DEFAULT_RECEIPT;
+  try {
+    const stored = localStorage.getItem('pos_receipt_settings');
+    return stored ? { ...DEFAULT_RECEIPT, ...JSON.parse(stored) } : DEFAULT_RECEIPT;
+  } catch { return DEFAULT_RECEIPT; }
+}
+
+function saveReceiptSettings(s: ReceiptSettings) {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('pos_receipt_settings', JSON.stringify(s));
+  }
+}
+
 export default function PosBillingCounterPage() {
-  const [userRole, setUserRole] = useState<string>('OWNER');
   const [canBill, setCanBill] = useState<boolean>(true);
-
-  // Clean state - 0 dummy cart data
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [customerName, setCustomerName] = useState('Walk-in Retail Customer');
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD'>('CASH');
+  const [items, setItems] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD'>('CASH');
   const [receiptSuccess, setReceiptSuccess] = useState<boolean>(false);
-  const [lastReceiptNo, setLastReceiptNo] = useState<string>('');
+  const [lastInvoice, setLastInvoice] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [selectedItemId, setSelectedItemId] = useState('');
 
-  // Quick item addition form
-  const [quickItemName, setQuickItemName] = useState('');
-  const [quickItemPrice, setQuickItemPrice] = useState<number>(0);
+  // Receipt Customization
+  const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings>(DEFAULT_RECEIPT);
+  const [showReceiptEditor, setShowReceiptEditor] = useState(false);
+  const [draftSettings, setDraftSettings] = useState<ReceiptSettings>(DEFAULT_RECEIPT);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const role = getActiveUserRole();
-    setUserRole(role);
     setCanBill(can('CREATE_INVOICE'));
+    setReceiptSettings(loadReceiptSettings());
+    loadInitialData();
   }, []);
 
-  const handleAddQuickItem = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickItemName || quickItemPrice <= 0) return;
+  const loadInitialData = async () => {
+    setIsLoading(true);
+    try {
+      const [fetchedItems, fetchedParties] = await Promise.all([api.getItems(), api.getParties()]);
+      setItems(fetchedItems || []);
 
-    const existingIdx = cart.findIndex((i) => i.name === quickItemName);
+      const activeCustomers = fetchedParties?.filter(
+        (p: any) => p.partyType === 'CUSTOMER' || p.partyType === 'BOTH'
+      ) || [];
+
+      let walkIn = activeCustomers.find((c: any) => c.name.toLowerCase().includes('walk-in'));
+      if (!walkIn && activeCustomers.length === 0) {
+        walkIn = await api.createParty({
+          name: 'Walk-in Retail Customer',
+          type: 'CUSTOMER',
+          email: 'retail@filsdesk.ae',
+          trn: '100000000000003',
+        });
+        activeCustomers.push(walkIn);
+      }
+
+      setCustomers(activeCustomers);
+      setSelectedCustomerId(walkIn?.id || activeCustomers[0]?.id || '');
+    } catch (e) {
+      console.error('POS load error', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAddToCart = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedItemId) return;
+    const product = items.find((i) => i.id === selectedItemId);
+    if (!product) return;
+    const existingIdx = cart.findIndex((i) => i.itemId === selectedItemId);
     if (existingIdx >= 0) {
       const updated = [...cart];
       updated[existingIdx].qty += 1;
       setCart(updated);
     } else {
-      setCart([...cart, { id: `pos-${Date.now()}`, name: quickItemName, price: quickItemPrice, qty: 1 }]);
+      setCart([...cart, { itemId: product.id, name: product.name, sku: product.sku, price: Number(product.salesPrice), qty: 1 }]);
     }
-    setQuickItemName('');
-    setQuickItemPrice(0);
+    setSelectedItemId('');
   };
 
-  const updateQty = (id: string, delta: number) => {
+  const updateQty = (itemId: string, delta: number) => {
     setCart(cart.map((item) => {
-      if (item.id === id) {
+      if (item.itemId === itemId) {
         const newQty = item.qty + delta;
         return newQty > 0 ? { ...item, qty: newQty } : item;
       }
@@ -58,155 +128,411 @@ export default function PosBillingCounterPage() {
     }));
   };
 
-  const removeItem = (id: string) => {
-    setCart(cart.filter((item) => item.id !== id));
-  };
+  const removeItem = (itemId: string) => setCart(cart.filter((item) => item.itemId !== itemId));
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const vatTotal = subtotal * 0.05;
   const grandTotal = subtotal + vatTotal;
 
-  const handlePrintReceipt = () => {
-    if (cart.length === 0 || !canBill) return;
-    const rcptId = `POS-${Date.now().toString().slice(-6)}`;
-    setLastReceiptNo(rcptId);
-    setReceiptSuccess(true);
-    setCart([]);
+  const handleChargeAndPrint = async () => {
+    if (cart.length === 0 || !canBill || !selectedCustomerId || isLoading) return;
+    setIsLoading(true);
+    try {
+      const result = await api.createSalesInvoice({
+        customerId: selectedCustomerId,
+        items: cart.map(item => ({
+          itemId: item.itemId,
+          description: item.name,
+          quantity: item.qty,
+          unitPrice: item.price,
+          vatCategory: 'STANDARD_5',
+        })),
+        paidAmount: grandTotal,
+        paymentMethod,
+        invoiceDate: new Date().toISOString(),
+      });
+      setLastInvoice(result);
+      setReceiptSuccess(true);
+      setCart([]);
+      const refreshed = await api.getItems();
+      setItems(refreshed || []);
+    } catch (e) {
+      console.error(e);
+      alert('Error creating invoice. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  // --- Receipt Editor ---
+  const openEditor = () => {
+    setDraftSettings({ ...receiptSettings });
+    setShowReceiptEditor(true);
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setDraftSettings((prev) => ({ ...prev, logoUrl: ev.target?.result as string }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const saveEditor = () => {
+    setReceiptSettings(draftSettings);
+    saveReceiptSettings(draftSettings);
+    setShowReceiptEditor(false);
+  };
+
+  const s = receiptSettings;
 
   return (
     <div style={{ maxWidth: '1140px', margin: '0 auto' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700 }}>POS Retail Cashier Terminal</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '2px' }}>
-            58mm/80mm ESC/POS Thermal Printing & Instant Retail Cash Ledger Posting
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#0f172a' }}>POS Retail Cashier Terminal</h1>
+          <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '2px' }}>
+            Real-Time Stock Deduction · UAE VAT 5% · Custom Thermal Receipt
           </p>
         </div>
+        <button
+          onClick={openEditor}
+          className="btn-secondary"
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem' }}
+        >
+          <Settings size={15} /> Customize Receipt Slip
+        </button>
       </div>
 
-      {/* Success Notification */}
-      {receiptSuccess && (
-        <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '14px 16px', borderRadius: '8px', marginBottom: '20px', color: '#047857', fontSize: '0.875rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <CheckCircle2 size={16} /> Receipt <strong>{lastReceiptNo}</strong> printed & posted to Cash Account 1010!
+      {/* ---- Receipt Customizer Modal ---- */}
+      {showReceiptEditor && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 999,
+          background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: '12px', width: '520px',
+            padding: '28px', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', maxHeight: '90vh', overflowY: 'auto',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ fontWeight: 700, fontSize: '1.1rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Edit3 size={18} color="#2563eb" /> Customize Receipt / Slip
+              </div>
+              <button onClick={() => setShowReceiptEditor(false)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}>
+                <X size={20} color="#64748b" />
+              </button>
+            </div>
+
+            {/* Logo Upload */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>
+                Company Logo (optional)
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                {draftSettings.logoUrl ? (
+                  <img src={draftSettings.logoUrl} alt="Logo Preview" style={{ height: '52px', width: 'auto', borderRadius: '4px', border: '1px solid #e2e8f0' }} />
+                ) : (
+                  <div style={{ height: '52px', width: '80px', borderRadius: '4px', border: '2px dashed #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Image size={20} color="#94a3b8" />
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <button type="button" onClick={() => logoInputRef.current?.click()} className="btn-secondary" style={{ fontSize: '0.8rem', padding: '6px 12px' }}>
+                    Upload Logo
+                  </button>
+                  {draftSettings.logoUrl && (
+                    <button type="button" onClick={() => setDraftSettings((p) => ({ ...p, logoUrl: '' }))}
+                      style={{ fontSize: '0.76rem', color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer' }}>
+                      Remove Logo
+                    </button>
+                  )}
+                </div>
+                <input ref={logoInputRef} type="file" accept="image/*" hidden onChange={handleLogoUpload} />
+              </div>
+            </div>
+
+            {/* Fields */}
+            {([
+              ['companyName', 'Company / Store Name'],
+              ['address', 'Address Line'],
+              ['phone', 'Phone Number'],
+              ['trn', 'UAE TRN Number'],
+              ['footerMessage', 'Footer / Thank-You Message'],
+            ] as [keyof ReceiptSettings, string][]).map(([key, label]) => (
+              <div key={key} style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>{label}</label>
+                {key === 'footerMessage' ? (
+                  <textarea
+                    rows={2}
+                    value={draftSettings[key]}
+                    onChange={(e) => setDraftSettings((p) => ({ ...p, [key]: e.target.value }))}
+                    style={{ width: '100%', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem', resize: 'vertical', boxSizing: 'border-box' }}
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={draftSettings[key]}
+                    onChange={(e) => setDraftSettings((p) => ({ ...p, [key]: e.target.value }))}
+                    style={{ width: '100%', padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                  />
+                )}
+              </div>
+            ))}
+
+            {/* Live Preview */}
+            <div style={{ marginTop: '16px', marginBottom: '20px' }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>Live Receipt Preview</div>
+              <div style={{
+                background: '#fff', border: '1px solid #cbd5e1', padding: '14px 12px', fontFamily: 'monospace',
+                fontSize: '0.75rem', color: '#1e293b', borderRadius: '4px', textAlign: 'center',
+              }}>
+                {draftSettings.logoUrl && <img src={draftSettings.logoUrl} alt="logo" style={{ height: '40px', marginBottom: '6px', objectFit: 'contain' }} />}
+                <div style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>{draftSettings.companyName || 'Your Company'}</div>
+                <div style={{ color: '#475569' }}>{draftSettings.address}</div>
+                <div style={{ color: '#475569' }}>Tel: {draftSettings.phone}</div>
+                <div style={{ color: '#475569' }}>TRN: {draftSettings.trn}</div>
+                <div style={{ borderTop: '1px dashed #ccc', margin: '8px 0', fontSize: '0.72rem', color: '#64748b' }}>
+                  Item 1 × 2... AED 50.00 | Item 2 × 1... AED 30.00<br />
+                  Subtotal: AED 80.00 | VAT 5%: AED 4.00 | Total: AED 84.00
+                </div>
+                <div style={{ fontStyle: 'italic', fontSize: '0.72rem', color: '#475569' }}>{draftSettings.footerMessage}</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowReceiptEditor(false)} className="btn-secondary">Cancel</button>
+              <button onClick={saveEditor} className="btn-primary">Save Changes</button>
+            </div>
           </div>
-          <button onClick={() => setReceiptSuccess(false)} className="btn-secondary" style={{ fontSize: '0.8rem', padding: '4px 8px' }}>
-            New Transaction
-          </button>
         </div>
       )}
 
-      {/* Grid: Quick Item Form & Retail Cart */}
+      {/* Success + Receipt */}
+      {receiptSuccess && lastInvoice && (
+        <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '20px', borderRadius: '8px', marginBottom: '24px', color: '#065f46' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #d1fae5', paddingBottom: '10px', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700 }}>
+              <CheckCircle2 size={20} color="#059669" /> Charged Successfully — {lastInvoice.invoiceNumber}
+            </div>
+            <button onClick={() => setReceiptSuccess(false)} className="btn-primary" style={{ fontSize: '0.8rem', padding: '6px 12px' }}>
+              New Sale
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '20px', alignItems: 'start' }}>
+            <div>
+              <p>Invoice <strong>{lastInvoice.invoiceNumber}</strong> saved to database. Inventory stock and ledger have been updated automatically.</p>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+                <button type="button" onClick={() => window.print()} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Printer size={14} /> Print Receipt
+                </button>
+                <button onClick={openEditor} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
+                  <Settings size={13} /> Edit Slip Design
+                </button>
+              </div>
+            </div>
+
+            {/* Thermal Receipt */}
+            <div id="thermal-receipt" style={{
+              background: '#ffffff', border: '1px solid #cbd5e1', padding: '16px 14px',
+              fontFamily: 'monospace', fontSize: '0.76rem', color: '#1e293b',
+              boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)', borderRadius: '4px',
+              textAlign: 'center',
+            }}>
+              {s.logoUrl && (
+                <img src={s.logoUrl} alt="Logo" style={{ height: '44px', marginBottom: '8px', objectFit: 'contain' }} />
+              )}
+              <div style={{ fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '2px' }}>{s.companyName}</div>
+              <div style={{ color: '#475569', marginBottom: '2px' }}>{s.address}</div>
+              <div style={{ color: '#475569', marginBottom: '2px' }}>Tel: {s.phone}</div>
+              <div style={{ color: '#475569', marginBottom: '8px' }}>TRN: {s.trn}</div>
+
+              <div style={{ borderTop: '1px dashed #475569', borderBottom: '1px dashed #475569', padding: '6px 0', marginBottom: '8px', textAlign: 'left' }}>
+                <div>Receipt: {lastInvoice.invoiceNumber}</div>
+                <div>Date: {new Date(lastInvoice.invoiceDate).toLocaleString()}</div>
+                <div>Customer: {lastInvoice.customer?.name || 'Walk-in'}</div>
+                <div>Payment: {paymentMethod}</div>
+              </div>
+
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '8px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px dashed #475569' }}>
+                    <th style={{ paddingBottom: '4px' }}>Item</th>
+                    <th style={{ textAlign: 'center', paddingBottom: '4px' }}>Qty</th>
+                    <th style={{ textAlign: 'right', paddingBottom: '4px' }}>AED</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lastInvoice.lines?.map((line: any, idx: number) => (
+                    <tr key={idx}>
+                      <td style={{ padding: '3px 0' }}>{line.description}</td>
+                      <td style={{ textAlign: 'center', padding: '3px 0' }}>{line.quantity}</td>
+                      <td style={{ textAlign: 'right', padding: '3px 0' }}>{Number(line.lineTotal).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div style={{ borderTop: '1px dashed #475569', paddingTop: '6px', textAlign: 'left' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Subtotal:</span><span>AED {Number(lastInvoice.subtotal).toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>VAT (5%):</span><span>AED {Number(lastInvoice.vatTotal).toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '0.85rem', marginTop: '4px' }}>
+                  <span>TOTAL PAID:</span><span>AED {Number(lastInvoice.grandTotal).toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div style={{ marginTop: '14px', fontStyle: 'italic', color: '#64748b', fontSize: '0.7rem' }}>
+                {s.footerMessage}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 440px', gap: '20px' }}>
-        {/* Left: Quick Item Add Form */}
+        {/* Left: Item Selector */}
         <div className="card-enterprise">
           <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Plus size={18} color="#2563eb" /> Scan or Enter POS Item
+            <Plus size={18} color="#2563eb" /> Select Product
           </h2>
 
-          <form onSubmit={handleAddQuickItem} style={{ marginBottom: '24px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: '10px', alignItems: 'flex-end' }}>
+          <form onSubmit={handleAddToCart} style={{ marginBottom: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr auto', gap: '10px', alignItems: 'flex-end' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Product Description *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Retail Item / Barcode"
-                  value={quickItemName}
-                  onChange={(e) => setQuickItemName(e.target.value)}
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Inventory Catalogue Item *</label>
+                <select
+                  value={selectedItemId}
+                  onChange={(e) => setSelectedItemId(e.target.value)}
                   style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
-                />
+                >
+                  <option value="">-- Choose Catalogue Item --</option>
+                  {items.map((i) => (
+                    <option key={i.id} value={i.id} disabled={i.currentStock <= 0}>
+                      {i.name} (SKU: {i.sku} · AED {Number(i.salesPrice).toFixed(2)} · Stock: {i.currentStock})
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Price (AED) *</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={quickItemPrice}
-                  onChange={(e) => setQuickItemPrice(parseFloat(e.target.value) || 0)}
-                  style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
-                />
-              </div>
-              <button type="submit" className="btn-primary" style={{ padding: '9px 16px' }}>
-                <Plus size={16} /> Add to Cart
+              <button type="submit" disabled={!selectedItemId} className="btn-primary" style={{ padding: '9px 16px' }}>
+                <Plus size={16} /> Add
               </button>
             </div>
+            {items.length === 0 && !isLoading && (
+              <p style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '6px' }}>No items in catalog. Add items under "Inventory" first.</p>
+            )}
           </form>
 
-          {/* Quick preset pills */}
+          {/* Quick Preset Pills */}
           <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginBottom: '10px' }}>Quick Item Shortcuts</div>
+            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', marginBottom: '10px' }}>Frequently Sold (Quick-Add)</div>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {[
-                { name: 'Cold Drink 330ml', price: 5.00 },
-                { name: 'Fresh Milk 1L', price: 8.50 },
-                { name: 'Arabica Coffee Beans 250g', price: 42.00 },
-                { name: 'Thermal Paper Roll 80mm', price: 15.00 },
-              ].map((p, i) => (
+              {items.slice(0, 8).map((p, i) => (
                 <button
                   key={i}
                   type="button"
-                  onClick={() => setCart([...cart, { id: `pos-${Date.now()}-${i}`, name: p.name, price: p.price, qty: 1 }])}
+                  onClick={() => {
+                    const existingIdx = cart.findIndex((c) => c.itemId === p.id);
+                    if (existingIdx >= 0) {
+                      const updated = [...cart];
+                      updated[existingIdx].qty += 1;
+                      setCart(updated);
+                    } else {
+                      setCart([...cart, { itemId: p.id, name: p.name, sku: p.sku, price: Number(p.salesPrice), qty: 1 }]);
+                    }
+                  }}
                   style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 12px', fontSize: '0.8rem', fontWeight: 600, color: '#0f172a', cursor: 'pointer' }}
                 >
-                  {p.name} (AED {p.price.toFixed(2)})
+                  {p.name} · AED {Number(p.salesPrice).toFixed(2)}
                 </button>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Right: Cart Summary & Thermal Receipt Generator */}
+        {/* Right: Cart & Charge */}
         <div className="card-enterprise">
           <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <ShoppingCart size={18} color="#2563eb" /> Current Basket ({cart.length})
           </h2>
 
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Customer</label>
+            <select
+              value={selectedCustomerId}
+              onChange={(e) => setSelectedCustomerId(e.target.value)}
+              style={{ width: '100%', padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.82rem' }}
+            >
+              {customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '14px' }}>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Payment Method</label>
+            <select
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value as any)}
+              style={{ width: '100%', padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.82rem' }}
+            >
+              <option value="CASH">Cash Drawer (Account 1010)</option>
+              <option value="CREDIT_CARD">Credit / Debit Card Terminal</option>
+              <option value="BANK_TRANSFER">Direct Bank Deposit (Account 1020)</option>
+            </select>
+          </div>
+
           {cart.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '32px', color: '#94a3b8', border: '1px dashed #cbd5e1', borderRadius: '8px', marginBottom: '20px' }}>
-              Basket is empty. Add items using the quick shortcuts or product entry form on the left.
+              Basket is empty. Add products on the left.
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px', maxHeight: '240px', overflowY: 'auto' }}>
               {cart.map((item) => (
-                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                <div key={item.itemId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', padding: '10px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#0f172a' }}>{item.name}</div>
                     <div style={{ fontSize: '0.78rem', color: '#64748b' }}>AED {item.price.toFixed(2)} each</div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '2px 6px' }}>
-                      <button onClick={() => updateQty(item.id, -1)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><Minus size={12} /></button>
-                      <span style={{ fontSize: '0.82rem', fontWeight: 700 }} className="num-tabular">{item.qty}</span>
-                      <button onClick={() => updateQty(item.id, 1)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><Plus size={12} /></button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '2px 6px' }}>
+                      <button onClick={() => updateQty(item.itemId, -1)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><Minus size={12} /></button>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 700 }}>{item.qty}</span>
+                      <button onClick={() => updateQty(item.itemId, 1)} style={{ border: 'none', background: 'none', cursor: 'pointer' }}><Plus size={12} /></button>
                     </div>
-                    <button onClick={() => removeItem(item.id)} style={{ border: 'none', background: 'none', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={14} /></button>
+                    <button onClick={() => removeItem(item.itemId)} style={{ border: 'none', background: 'none', color: '#dc2626', cursor: 'pointer' }}><Trash2 size={14} /></button>
                   </div>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Cart Total Breakdown */}
-          <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px', fontSize: '0.875rem' }}>
+          {/* Totals */}
+          <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '16px', fontSize: '0.875rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <span>Subtotal:</span>
-              <span className="num-tabular">AED {subtotal.toFixed(2)}</span>
+              <span>Subtotal:</span><span>AED {subtotal.toFixed(2)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#059669', fontWeight: 600, marginBottom: '6px' }}>
-              <span>UAE VAT (5%):</span>
-              <span className="num-tabular">AED {vatTotal.toFixed(2)}</span>
+              <span>UAE VAT (5%):</span><span>AED {vatTotal.toFixed(2)}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #0f172a', paddingTop: '8px', fontWeight: 800, fontSize: '1.15rem', color: '#0f172a' }}>
-              <span>Total Payable:</span>
-              <span className="num-tabular">AED {grandTotal.toFixed(2)}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #0f172a', paddingTop: '8px', fontWeight: 800, fontSize: '1.1rem', color: '#0f172a' }}>
+              <span>Total Payable:</span><span>AED {grandTotal.toFixed(2)}</span>
             </div>
           </div>
 
-          <button onClick={handlePrintReceipt} disabled={cart.length === 0 || !canBill} className="btn-primary" style={{ width: '100%', padding: '12px', justifyContent: 'center' }}>
-            <Printer size={18} /> Print Thermal ESC/POS Receipt & Charge
+          <button
+            onClick={handleChargeAndPrint}
+            disabled={cart.length === 0 || !canBill || isLoading}
+            className="btn-primary"
+            style={{ width: '100%', padding: '12px', justifyContent: 'center' }}
+          >
+            <Printer size={18} />
+            {isLoading ? 'Processing...' : 'Charge & Print Receipt'}
           </button>
         </div>
       </div>

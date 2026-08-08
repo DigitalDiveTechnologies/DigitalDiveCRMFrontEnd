@@ -16,15 +16,13 @@ export interface CreateItemDto {
 @ApiTags('Inventory Management & Items')
 @Controller('inventory')
 export class InventoryController {
-  private itemsStore: any[] = [];
-
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Get('items')
   @ApiOperation({ summary: 'List item catalogue & stock levels' })
   @ApiHeader({ name: 'x-tenant-id', required: true })
   async getItems(@Headers('x-tenant-id') tenantId: string = 'tenant-default') {
-    return this.itemsStore.filter((i) => i.tenantId === tenantId || tenantId === 'tenant-default');
+    return this.inventoryService.getItems(tenantId);
   }
 
   @Post('items')
@@ -34,14 +32,32 @@ export class InventoryController {
     @Headers('x-tenant-id') tenantId: string = 'tenant-default',
     @Body() dto: CreateItemDto,
   ) {
-    const newItem = {
-      id: `itm-${Date.now()}`,
-      tenantId,
-      ...dto,
-      createdAt: new Date().toISOString(),
-    };
-    this.itemsStore.push(newItem);
-    return newItem;
+    return this.inventoryService.createItem(tenantId, {
+      name: dto.name,
+      sku: dto.sku,
+      barcode: dto.barcode,
+      unitPrice: dto.unitPrice,
+      purchasePrice: dto.costPrice,
+      initialStock: dto.stockQuantity,
+      vatCategory: dto.vatCategory,
+    });
+  }
+
+  @Get('warehouses')
+  @ApiOperation({ summary: 'List active warehouses' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  async getWarehouses(@Headers('x-tenant-id') tenantId: string = 'tenant-default') {
+    return this.inventoryService.getWarehouses(tenantId);
+  }
+
+  @Post('warehouses')
+  @ApiOperation({ summary: 'Create a new warehouse' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  async createWarehouse(
+    @Headers('x-tenant-id') tenantId: string = 'tenant-default',
+    @Body() dto: any,
+  ) {
+    return this.inventoryService.createWarehouse(tenantId, dto);
   }
 
   @Post('transfers')
