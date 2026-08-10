@@ -24,6 +24,7 @@ export default function ItemsPage() {
   const [items, setItems] = useState<ItemEntry[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [loading, setLoading] = useState(true);
 
   // Form state
   const [newItemSku, setNewItemSku] = useState('');
@@ -37,32 +38,63 @@ export default function ItemsPage() {
     const role = getActiveUserRole();
     setUserRole(role);
     setCanManage(can('MANAGE_ITEMS'));
+    loadItems();
   }, []);
+
+  const loadItems = async () => {
+    try {
+      setLoading(true);
+      const data = await api.getItems();
+      const mapped = (data || []).map((i: any) => ({
+        id: i.id,
+        sku: i.sku,
+        name: i.name,
+        category: i.category || 'General',
+        vatCategory: i.vatCategory || 'STANDARD_5',
+        unitPrice: Number(i.salesPrice || 0),
+        stockOnHand: Number(i.currentStock || 0),
+      }));
+      setItems(mapped);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemSku || !newItemName || !canManage) return;
 
-    const newItem: ItemEntry = {
-      id: `itm-${Date.now()}`,
-      sku: newItemSku,
-      name: newItemName,
-      category: newItemCategory || 'General',
-      vatCategory: newItemVatCategory,
-      unitPrice: newItemPrice || 0,
-      stockOnHand: newItemStock || 0,
-    };
-
-    setItems([newItem, ...items]);
-    setIsModalOpen(false);
-    setNewItemSku('');
-    setNewItemName('');
-    setNewItemPrice(0);
-    setNewItemStock(0);
-
     try {
-      await api.createItem(newItem);
-    } catch (e) {}
+      const saved = await api.createItem({
+        sku: newItemSku,
+        name: newItemName,
+        category: newItemCategory || 'General',
+        vatCategory: newItemVatCategory,
+        unitPrice: newItemPrice || 0,
+        initialStock: newItemStock || 0,
+      });
+
+      const mappedSaved: ItemEntry = {
+        id: saved.id,
+        sku: saved.sku,
+        name: saved.name,
+        category: saved.category || 'General',
+        vatCategory: saved.vatCategory || 'STANDARD_5',
+        unitPrice: Number(saved.salesPrice || 0),
+        stockOnHand: Number(saved.currentStock || 0),
+      };
+
+      setItems([mappedSaved, ...items]);
+      setIsModalOpen(false);
+      setNewItemSku('');
+      setNewItemName('');
+      setNewItemPrice(0);
+      setNewItemStock(0);
+    } catch (e) {
+      console.error('Failed to save item:', e);
+    }
   };
 
   const handleExportItems = () => {
@@ -120,7 +152,11 @@ export default function ItemsPage() {
 
       {/* Catalogue Table */}
       <div className="card-enterprise" style={{ padding: '0', overflow: 'hidden' }}>
-        {filteredItems.length === 0 ? (
+        {loading ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+            Loading catalogue list...
+          </div>
+        ) : filteredItems.length === 0 ? (
           <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
             No items in catalogue yet. Click "Add Item to Catalogue" to register your first product or service SKU.
           </div>

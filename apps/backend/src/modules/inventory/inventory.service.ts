@@ -74,9 +74,21 @@ export class InventoryService {
   }
 
   async getWarehouses(tenantId: string): Promise<Warehouse[]> {
-    return this.warehouseRepository.find({
+    let warehouses = await this.warehouseRepository.find({
       where: { tenantId, isActive: true },
     });
+    if (warehouses.length === 0) {
+      const defaultWarehouse = this.warehouseRepository.create({
+        tenantId,
+        code: 'WH-MAIN-01',
+        name: 'Main Warehouse',
+        address: 'Dubai, UAE',
+        isActive: true,
+      });
+      const saved = await this.warehouseRepository.save(defaultWarehouse);
+      warehouses = [saved];
+    }
+    return warehouses;
   }
 
   async createWarehouse(tenantId: string, dto: any): Promise<Warehouse> {

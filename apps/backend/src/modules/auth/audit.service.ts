@@ -25,10 +25,7 @@ export interface UserDeviceSession {
 @Injectable()
 export class AuditService {
   private auditLogsStore: LogAuditInput[] = [];
-  private activeSessionsStore: UserDeviceSession[] = [
-    { sessionId: 'sess-dxb-801', userId: 'usr-101', userEmail: 'rashid@alfuttaim.ae', deviceType: 'macOS Web Dashboard (Chrome)', ipAddress: '194.170.92.1', lastActive: new Date(), isRevoked: false },
-    { sessionId: 'sess-dxb-802', userId: 'usr-102', userEmail: 'tariq@alfuttaim.ae', deviceType: 'Windows POS Terminal #01', ipAddress: '194.170.92.14', lastActive: new Date(), isRevoked: false },
-  ];
+  private activeSessionsStore: UserDeviceSession[] = [];
 
   /**
    * Log an immutable security audit event with correlationId.

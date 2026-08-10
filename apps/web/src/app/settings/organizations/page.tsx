@@ -195,6 +195,39 @@ export default function OrganizationsAdminPage() {
     }
   };
 
+  const handleDeleteTenant = async (id: string) => {
+    if (!confirm('Warning: Deleting this organization will permanently delete all associated branches, inventories, and users! Proceed?')) return;
+    try {
+      await api.deleteTenant(id);
+      setTenants(tenants.filter(t => t.id !== id));
+      setNotification({ type: 'success', message: 'Organization successfully deleted.' });
+    } catch (err: any) {
+      setNotification({ type: 'error', message: `Delete failed: ${err.message || err}` });
+    }
+  };
+
+  const handleDeleteBranch = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this operational branch?')) return;
+    try {
+      await api.deleteBranch(id);
+      setBranches(branches.filter(b => b.id !== id));
+      setNotification({ type: 'success', message: 'Branch successfully deleted.' });
+    } catch (err: any) {
+      setNotification({ type: 'error', message: `Delete failed: ${err.message || err}` });
+    }
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    if (!confirm('Are you sure you want to revoke system access for this user?')) return;
+    try {
+      await api.deleteSystemUser(id);
+      setUsers(users.filter(u => u.userId !== id));
+      setNotification({ type: 'success', message: 'User access successfully revoked.' });
+    } catch (err: any) {
+      setNotification({ type: 'error', message: `Revocation failed: ${err.message || err}` });
+    }
+  };
+
   const getTenantName = (id: string) => {
     const tenant = tenants.find(t => t.id === id);
     return tenant ? tenant.companyName : id;
@@ -334,6 +367,7 @@ export default function OrganizationsAdminPage() {
                     <th>Currency</th>
                     <th>Status</th>
                     <th>Date Registered</th>
+                    <th style={{ textAlign: 'center' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -347,6 +381,23 @@ export default function OrganizationsAdminPage() {
                         <span className="badge-status badge-status-green">ACTIVE</span>
                       </td>
                       <td style={{ color: '#64748b', fontSize: '0.8rem' }}>{new Date(t.createdAt).toLocaleDateString()}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          onClick={() => handleDeleteTenant(t.id)}
+                          style={{
+                            border: 'none',
+                            background: '#fee2e2',
+                            color: '#dc2626',
+                            padding: '6px 12px',
+                            borderRadius: '4px',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -383,6 +434,7 @@ export default function OrganizationsAdminPage() {
                     <th>Branch Code</th>
                     <th>Location / Address</th>
                     <th>Status</th>
+                    <th style={{ textAlign: 'center' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -393,6 +445,23 @@ export default function OrganizationsAdminPage() {
                       <td style={{ color: '#475569' }}>{b.location}</td>
                       <td>
                         <span className="badge-status badge-status-green">ACTIVE</span>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          onClick={() => handleDeleteBranch(b.id)}
+                          style={{
+                            border: 'none',
+                            background: '#fee2e2',
+                            color: '#dc2626',
+                            padding: '6px 12px',
+                            borderRadius: '4px',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Delete
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -419,6 +488,7 @@ export default function OrganizationsAdminPage() {
                     <th>Assigned Organization</th>
                     <th>Assigned Branch</th>
                     <th>Access Scope</th>
+                    <th style={{ textAlign: 'center' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -441,6 +511,24 @@ export default function OrganizationsAdminPage() {
                         {u.role === 'ACCOUNTANT' && 'General Ledger & Financials'}
                         {u.role === 'BILLER_CASHIER' && 'Billing Counter Only'}
                         {u.role === 'AUDITOR' && 'Read-Only Audits'}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          onClick={() => handleDeleteUser(u.userId)}
+                          style={{
+                            border: 'none',
+                            background: '#fee2e2',
+                            color: '#dc2626',
+                            padding: '6px 12px',
+                            borderRadius: '4px',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                          disabled={u.email === 'owner@digitaldive.ae'}
+                        >
+                          Revoke
+                        </button>
                       </td>
                     </tr>
                   ))}

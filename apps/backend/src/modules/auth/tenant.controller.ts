@@ -1,107 +1,88 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Tenant } from '../../database/entities/tenant.entity';
+import { Branch } from '../../database/entities/branch.entity';
+import { User } from '../../database/entities/user.entity';
 
 @ApiTags('Organizations & Branches Management')
 @Controller('auth')
 export class TenantController {
-  private tenantsStore = [
-    {
-      id: 'tenant-dxb-90210',
-      companyName: 'Al Futtaim Group',
-      trn: '100123456700003',
-      baseCurrency: 'AED',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: 'tenant-default',
-      companyName: 'Digital Dive Technologies',
-      trn: '100999888700001',
-      baseCurrency: 'AED',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-    },
-  ];
-
-  private branchesStore = [
-    {
-      id: 'b1',
-      tenantId: 'tenant-dxb-90210',
-      name: 'Dubai Mall Branch',
-      code: 'DXB-01',
-      location: 'Dubai Mall, Downtown Dubai',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: 'b2',
-      tenantId: 'tenant-dxb-90210',
-      name: 'Mall of the Emirates Branch',
-      code: 'DXB-02',
-      location: 'MOE, Al Barsha, Dubai',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: 'b3',
-      tenantId: 'tenant-dxb-90210',
-      name: 'Sharjah City Centre Branch',
-      code: 'SHJ-01',
-      location: 'City Centre, Sharjah',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: 'b-default',
-      tenantId: 'tenant-default',
-      name: 'Corporate HQ',
-      code: 'HQ-01',
-      location: 'Business Bay, Dubai',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-    },
-  ];
+  constructor(
+    @InjectRepository(Tenant)
+    private readonly tenantRepository: Repository<Tenant>,
+    @InjectRepository(Branch)
+    private readonly branchRepository: Repository<Branch>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+  ) {}
 
   @Get('tenants')
   @ApiOperation({ summary: 'List all corporate organizations / tenants' })
   async getTenants() {
-    return this.tenantsStore;
+    return this.tenantRepository.find({
+      order: { createdAt: 'DESC' },
+    });
   }
 
   @Post('tenants')
   @ApiOperation({ summary: 'Create a new corporate tenant (Organization)' })
   async createTenant(@Body() body: any) {
-    const newTenant = {
-      id: `tenant-${Date.now()}`,
+    const tenant = this.tenantRepository.create({
       companyName: body.companyName,
       trn: body.trn || 'N/A',
       baseCurrency: body.baseCurrency || 'AED',
       isActive: true,
-      createdAt: new Date().toISOString(),
-    };
-    this.tenantsStore.push(newTenant);
-    return newTenant;
+    });
+    return this.tenantRepository.save(tenant);
+  }
+
+  @Delete('tenants/:id')
+  @ApiOperation({ summary: 'Delete a corporate tenant and its branches/users context' })
+  async deleteTenant(@Param('id') tenantId: string) {
+    // Delete users associated with this tenant
+    await this.userRepository.delete({ tenantId });
+    // Delete branches (cascade will delete them, but explicitly clean up if needed)
+    await this.branchRepository.delete({ tenantId });
+    // Delete tenant
+    await this.tenantRepository.delete(tenantId);
+    return { success: true };
   }
 
   @Get('tenants/:id/branches')
   @ApiOperation({ summary: 'List all operational branches under a tenant' })
   async getBranches(@Param('id') tenantId: string) {
-    return this.branchesStore.filter((b) => b.tenantId === tenantId);
+    return this.branchRepository.find({
+      where: { tenantId },
+      order: { createdAt: 'ASC' },
+    });
   }
 
   @Post('tenants/:id/branches')
   @ApiOperation({ summary: 'Create a new branch under a tenant' })
   async createBranch(@Param('id') tenantId: string, @Body() body: any) {
-    const newBranch = {
-      id: `br-${Date.now()}`,
+    const branch = this.branchRepository.create({
       tenantId,
       name: body.name,
       code: body.code,
-      location: body.location || 'UAE',
+      address: body.location || body.address || 'UAE',
       isActive: true,
-      createdAt: new Date().toISOString(),
-    };
-    this.branchesStore.push(newBranch);
-    return newBranch;
+    });
+    return this.branchRepository.save(branch);
+  }
+
+  @Delete('branches/:id')
+  @ApiOperation({ summary: 'Delete an operational branch' })
+  async deleteBranch(@Param('id') branchId: string) {
+    await this.branchRepository.delete(branchId);
+    return { success: true };
+  }
+
+  @Delete('users/:id')
+  @ApiOperation({ summary: 'Delete a user access mapping' })
+  async deleteUser(@Param('id') userId: string) {
+    await this.userRepository.delete(userId);
+    return { success: true };
   }
 }

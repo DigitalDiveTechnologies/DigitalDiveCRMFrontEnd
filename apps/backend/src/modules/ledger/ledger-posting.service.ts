@@ -169,6 +169,41 @@ export class LedgerPostingService {
     });
   }
 
+  async ensureChartOfAccounts(tenantId: string): Promise<void> {
+    const defaultAccounts = [
+      { code: '1010', name: 'Cash on Hand', type: AccountType.ASSET },
+      { code: '1020', name: 'Bank Account', type: AccountType.ASSET },
+      { code: '1100', name: 'Accounts Receivable', type: AccountType.ASSET },
+      { code: '1200', name: 'Finished Goods Inventory', type: AccountType.ASSET },
+      { code: '2010', name: 'Accounts Payable', type: AccountType.LIABILITY },
+      { code: '2150', name: 'Output VAT 5%', type: AccountType.LIABILITY },
+      { code: '2160', name: 'Input VAT 5%', type: AccountType.LIABILITY },
+      { code: '3010', name: 'Owner\'s Capital', type: AccountType.EQUITY },
+      { code: '3020', name: 'Retained Earnings', type: AccountType.EQUITY },
+      { code: '4000', name: 'Sales Revenue', type: AccountType.REVENUE },
+      { code: '5000', name: 'Cost of Goods Sold', type: AccountType.EXPENSE },
+      { code: '5100', name: 'Operating Expenses', type: AccountType.EXPENSE },
+    ];
+
+    for (const def of defaultAccounts) {
+      let acc = await this.accountRepository.findOne({
+        where: { tenantId, code: def.code },
+      });
+      if (!acc) {
+        acc = this.accountRepository.create({
+          tenantId,
+          code: def.code,
+          name: def.name,
+          accountType: def.type,
+          currentBalance: 0,
+          isSystemAccount: true,
+          isActive: true,
+        });
+        await this.accountRepository.save(acc);
+      }
+    }
+  }
+
   async getJournals(tenantId: string): Promise<JournalEntry[]> {
     return this.journalEntryRepository.find({
       where: { tenantId },
@@ -178,6 +213,7 @@ export class LedgerPostingService {
   }
 
   async getTrialBalance(tenantId: string) {
+    await this.ensureChartOfAccounts(tenantId);
     const accounts = await this.accountRepository.find({
       where: { tenantId, isActive: true },
     });
@@ -227,6 +263,7 @@ export class LedgerPostingService {
   }
 
   async getProfitLoss(tenantId: string) {
+    await this.ensureChartOfAccounts(tenantId);
     const accounts = await this.accountRepository.find({
       where: { tenantId, isActive: true },
     });
@@ -263,6 +300,7 @@ export class LedgerPostingService {
   }
 
   async getBalanceSheet(tenantId: string) {
+    await this.ensureChartOfAccounts(tenantId);
     const accounts = await this.accountRepository.find({
       where: { tenantId, isActive: true },
     });

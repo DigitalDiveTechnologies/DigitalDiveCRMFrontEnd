@@ -127,6 +127,12 @@ export const api = {
     fetchFromApi('/auth/users', { method: 'POST', body: JSON.stringify(data) }),
   updateSystemUser: (id: string, data: any) =>
     fetchFromApi(`/auth/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteTenant: (id: string) =>
+    fetchFromApi(`/auth/tenants/${id}`, { method: 'DELETE' }),
+  deleteBranch: (id: string) =>
+    fetchFromApi(`/auth/branches/${id}`, { method: 'DELETE' }),
+  deleteSystemUser: (id: string) =>
+    fetchFromApi(`/auth/users/${id}`, { method: 'DELETE' }),
 
   // Offline Sync
   pushSync: (data: any) =>
