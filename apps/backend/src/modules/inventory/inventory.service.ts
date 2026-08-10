@@ -73,6 +73,24 @@ export class InventoryService {
     return this.itemRepository.save(item);
   }
 
+  async updateItem(tenantId: string, id: string, dto: any): Promise<Item> {
+    const item = await this.itemRepository.findOne({ where: { id, tenantId } });
+    if (!item) throw new NotFoundException('Item not found in this organization.');
+
+    if (dto.name !== undefined) item.name = dto.name;
+    if (dto.sku !== undefined) item.sku = dto.sku;
+    if (dto.barcode !== undefined) item.barcode = dto.barcode;
+    if (dto.unitPrice !== undefined) item.salesPrice = dto.unitPrice;
+    if (dto.purchasePrice !== undefined) item.purchasePrice = dto.purchasePrice;
+    if (dto.costPrice !== undefined) item.purchasePrice = dto.costPrice;
+    if (dto.reorderLevel !== undefined) item.reorderLevel = dto.reorderLevel;
+    if (dto.vatCategory !== undefined) item.vatCategory = dto.vatCategory;
+    if (dto.currentStock !== undefined) item.currentStock = dto.currentStock;
+    if (dto.initialStock !== undefined) item.currentStock = dto.initialStock;
+
+    return this.itemRepository.save(item);
+  }
+
   async getWarehouses(tenantId: string): Promise<Warehouse[]> {
     let warehouses = await this.warehouseRepository.find({
       where: { tenantId, isActive: true },
@@ -114,6 +132,7 @@ export class InventoryService {
     sourceDocumentId: string,
     sourceDocumentType: string,
     costPrice?: number,
+    reason?: string,
   ): Promise<StockMovement> {
     return this.stockMovementRepository.manager.transaction(async (transactionalEntityManager) => {
       const item = await transactionalEntityManager.findOne(Item, {
@@ -162,6 +181,7 @@ export class InventoryService {
         sourceDocumentId,
         sourceDocumentType,
         costPrice: costPrice || oldWac,
+        reason: reason || null,
       });
 
       return transactionalEntityManager.save(movement);
@@ -244,6 +264,7 @@ export class InventoryService {
       adjustmentId,
       'INVENTORY_ADJUSTMENT',
       unitCost,
+      input.reason,
     );
 
     // Post Inventory Loss Journal to GL
@@ -277,5 +298,13 @@ export class InventoryService {
       inventoryLossValue,
       postedJournalId: journalResult.journalId,
     };
+  }
+
+  async getStockMovements(tenantId: string): Promise<StockMovement[]> {
+    return this.stockMovementRepository.find({
+      where: { tenantId },
+      relations: ['item', 'warehouse'],
+      order: { createdAt: 'DESC' },
+    });
   }
 }

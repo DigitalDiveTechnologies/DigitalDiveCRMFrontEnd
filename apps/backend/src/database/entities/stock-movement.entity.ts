@@ -48,6 +48,9 @@ export class StockMovement {
   @Column({ type: 'numeric', precision: 15, scale: 2, default: 0 })
   costPrice: number;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  reason: string;
+
   @CreateDateColumn()
   createdAt: Date;
 }

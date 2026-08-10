@@ -23,12 +23,14 @@ interface BranchItem {
 }
 
 interface UserLoginItem {
-  userId: string;
+  id: string;
   name: string;
   email: string;
   role: string;
   tenantId: string;
   branchId: string;
+  password?: string;
+  isActive?: boolean;
 }
 
 export default function OrganizationsAdminPage() {
@@ -43,6 +45,7 @@ export default function OrganizationsAdminPage() {
   const [selectedTenantId, setSelectedTenantId] = useState('');
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [selectedDetailUser, setSelectedDetailUser] = useState<UserLoginItem | null>(null);
 
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -221,7 +224,7 @@ export default function OrganizationsAdminPage() {
     if (!confirm('Are you sure you want to revoke system access for this user?')) return;
     try {
       await api.deleteSystemUser(id);
-      setUsers(users.filter(u => u.userId !== id));
+      setUsers(users.filter(u => u.id !== id));
       setNotification({ type: 'success', message: 'User access successfully revoked.' });
     } catch (err: any) {
       setNotification({ type: 'error', message: `Revocation failed: ${err.message || err}` });
@@ -493,12 +496,12 @@ export default function OrganizationsAdminPage() {
                 </thead>
                 <tbody>
                   {users.map(u => (
-                    <tr key={u.userId}>
+                    <tr key={u.id}>
                       <td>
                         <div style={{ fontWeight: 600, color: '#0f172a' }}>{u.name}</div>
                         <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{u.email}</div>
                       </td>
-                      <td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748b' }}>{u.userId}</td>
+                      <td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748b' }}>{u.id}</td>
                       <td>
                         <span className={`badge-status ${u.role === 'OWNER' ? 'badge-status-blue' : 'badge-status-amber'}`}>
                           {u.role}
@@ -512,9 +515,25 @@ export default function OrganizationsAdminPage() {
                         {u.role === 'BILLER_CASHIER' && 'Billing Counter Only'}
                         {u.role === 'AUDITOR' && 'Read-Only Audits'}
                       </td>
-                      <td style={{ textAlign: 'center' }}>
+                      <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                         <button
-                          onClick={() => handleDeleteUser(u.userId)}
+                          onClick={() => setSelectedDetailUser(u)}
+                          style={{
+                            border: 'none',
+                            background: '#eff6ff',
+                            color: '#2563eb',
+                            padding: '6px 12px',
+                            borderRadius: '4px',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            marginRight: '8px',
+                          }}
+                        >
+                          Details
+                        </button>
+                        <button
+                          onClick={() => handleDeleteUser(u.id)}
                           style={{
                             border: 'none',
                             background: '#fee2e2',
@@ -674,8 +693,10 @@ export default function OrganizationsAdminPage() {
                     style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
                   >
                     <option value="OWNER">Owner / Full Access</option>
+                    <option value="SECONDARY_ADMIN">Secondary Admin</option>
                     <option value="ACCOUNTANT">Accountant</option>
                     <option value="BILLER_CASHIER">Biller / Cashier</option>
+                    <option value="INVENTORY_MANAGER">Inventory Manager</option>
                     <option value="AUDITOR">Auditor</option>
                   </select>
                 </div>
@@ -716,6 +737,177 @@ export default function OrganizationsAdminPage() {
                 </div>
               </form>
             )}
+
+          </div>
+        </div>
+      )}
+
+      {/* USER DETAIL MODAL */}
+      {selectedDetailUser && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div className="card-enterprise" style={{ width: '500px', maxWidth: '90%' }}>
+            
+            {/* Modal Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Users size={18} color="#2563eb" /> Employee Access Details
+              </h3>
+              <button onClick={() => setSelectedDetailUser(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '24px' }}>
+              
+              {/* Profile Header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', paddingBottom: '12px', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '50%',
+                  background: '#2563eb',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: '1.2rem'
+                }}>
+                  {selectedDetailUser.name.charAt(0)}
+                </div>
+                <div>
+                  <h4 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>{selectedDetailUser.name}</h4>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{selectedDetailUser.email}</span>
+                </div>
+              </div>
+
+              {/* Detail fields */}
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: '8px 0', color: '#64748b', fontWeight: 600, width: '150px' }}>User ID</td>
+                    <td style={{ padding: '8px 0', fontFamily: 'monospace', color: '#0f172a' }}>{selectedDetailUser.id}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '8px 0', color: '#64748b', fontWeight: 600 }}>System Role</td>
+                    <td style={{ padding: '8px 0' }}>
+                      <select
+                        value={selectedDetailUser.role}
+                        onChange={async (e) => {
+                          const newRole = e.target.value;
+                          try {
+                            await api.updateSystemUser(selectedDetailUser.id, { role: newRole });
+                            setUsers(users.map(u => u.id === selectedDetailUser.id ? { ...u, role: newRole } : u));
+                            setSelectedDetailUser({ ...selectedDetailUser, role: newRole });
+                            setNotification({ type: 'success', message: `User "${selectedDetailUser.name}" role updated to ${newRole}.` });
+                          } catch (err: any) {
+                            alert(`Failed to update role: ${err.message || err}`);
+                          }
+                        }}
+                        style={{ padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.85rem', background: '#ffffff', fontWeight: 600, color: '#0f172a' }}
+                        disabled={selectedDetailUser.email === 'owner@digitaldive.ae'}
+                      >
+                        <option value="OWNER">Owner / Full Access</option>
+                        <option value="SECONDARY_ADMIN">Secondary Admin</option>
+                        <option value="ACCOUNTANT">Accountant</option>
+                        <option value="BILLER_CASHIER">Biller / Cashier</option>
+                        <option value="INVENTORY_MANAGER">Inventory Manager</option>
+                        <option value="AUDITOR">Auditor</option>
+                      </select>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '8px 0', color: '#64748b', fontWeight: 600 }}>Corporate Tenant</td>
+                    <td style={{ padding: '8px 0', fontWeight: 600, color: '#0f172a' }}>{getTenantName(selectedDetailUser.tenantId)}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '8px 0', color: '#64748b', fontWeight: 600 }}>Active Branch ID</td>
+                    <td style={{ padding: '8px 0', fontFamily: 'monospace', color: '#0f172a' }}>{selectedDetailUser.branchId}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '8px 0', color: '#64748b', fontWeight: 600 }}>Access Password</td>
+                    <td style={{ padding: '8px 0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontFamily: 'monospace', fontSize: '0.9rem', color: '#d97706', fontWeight: 700, background: '#fffbeb', padding: '2px 6px', borderRadius: '4px', border: '1px solid #fef3c7' }}>
+                          {selectedDetailUser.password || 'admin'}
+                        </span>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(selectedDetailUser.password || 'admin');
+                            alert('Password copied to clipboard!');
+                          }}
+                          style={{
+                            background: '#f1f5f9',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '4px',
+                            padding: '2px 6px',
+                            fontSize: '0.72rem',
+                            cursor: 'pointer',
+                            color: '#475569',
+                            fontWeight: 600
+                          }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '8px 0', color: '#64748b', fontWeight: 600 }}>Login Status</td>
+                    <td style={{ padding: '8px 0' }}>
+                      <span className={`badge-status ${selectedDetailUser.isActive !== false ? 'badge-status-emerald' : 'badge-status-rose'}`}>
+                        {selectedDetailUser.isActive !== false ? 'ACTIVE' : 'DEACTIVATED'}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* Status Actions */}
+              <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+                <div>
+                  <strong style={{ display: 'block', fontSize: '0.82rem', color: '#0f172a' }}>Administrative Control</strong>
+                  <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Temporarily block or restore employee's portal access.</span>
+                </div>
+                
+                <button
+                  onClick={async () => {
+                    const newStatus = selectedDetailUser.isActive === false;
+                    try {
+                      await api.updateSystemUser(selectedDetailUser.id, { isActive: newStatus });
+                      setUsers(users.map(u => u.id === selectedDetailUser.id ? { ...u, isActive: newStatus } : u));
+                      setSelectedDetailUser({ ...selectedDetailUser, isActive: newStatus });
+                      setNotification({ type: 'success', message: `User "${selectedDetailUser.name}" has been ${newStatus ? 'activated' : 'deactivated'}.` });
+                    } catch (err: any) {
+                      alert(`Failed to update status: ${err.message || err}`);
+                    }
+                  }}
+                  className={selectedDetailUser.isActive !== false ? 'btn-secondary' : 'btn-primary'}
+                  style={{
+                    padding: '8px 14px',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: selectedDetailUser.isActive !== false ? '#fee2e2' : '#059669',
+                    color: selectedDetailUser.isActive !== false ? '#dc2626' : '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px'
+                  }}
+                  disabled={selectedDetailUser.email === 'owner@digitaldive.ae'}
+                >
+                  {selectedDetailUser.isActive !== false ? 'Deactivate User' : 'Activate User'}
+                </button>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid #e2e8f0', paddingTop: '14px' }}>
+              <button onClick={() => setSelectedDetailUser(null)} className="btn-primary" style={{ padding: '8px 16px' }}>
+                Close Details
+              </button>
+            </div>
 
           </div>
         </div>

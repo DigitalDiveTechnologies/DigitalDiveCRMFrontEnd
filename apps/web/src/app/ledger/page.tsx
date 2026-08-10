@@ -21,6 +21,7 @@ export default function LedgerPage() {
   const [canPost, setCanPost] = useState<boolean>(true);
 
   const [journals, setJournals] = useState<JournalEntryItem[]>([]);
+  const [selectedJournal, setSelectedJournal] = useState<JournalEntryItem | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [postedSuccess, setPostedSuccess] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -181,7 +182,7 @@ export default function LedgerPage() {
             </thead>
             <tbody>
               {journals.map((j) => (
-                <tr key={j.id}>
+                <tr key={j.id} onClick={() => setSelectedJournal(j)} style={{ cursor: 'pointer' }} className="hover-row">
                   <td style={{ fontWeight: 700, color: '#2563eb' }}>JRN-{j.id.slice(-6).toUpperCase()}</td>
                   <td style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569' }}>{j.sourceDocumentType}</td>
                   <td style={{ fontWeight: 500, color: '#0f172a' }}>{j.narration}</td>
@@ -267,6 +268,63 @@ export default function LedgerPage() {
                 <button type="submit" disabled={amount <= 0 || debitAccCode === creditAccCode || isLoading} className="btn-primary">Post Journal</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Journal Details Modal */}
+      {selectedJournal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div className="card-enterprise" style={{ width: '600px', maxWidth: '95%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>
+                Journal Entry Details: JRN-{selectedJournal.id.slice(-6).toUpperCase()}
+              </h3>
+              <button onClick={() => setSelectedJournal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '16px', fontSize: '0.85rem', color: '#475569', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div><strong>Source Document:</strong> {selectedJournal.sourceDocumentType}</div>
+              <div><strong>Posting Date:</strong> {selectedJournal.postingDate ? new Date(selectedJournal.postingDate).toLocaleString() : 'N/A'}</div>
+              <div style={{ gridColumn: 'span 2' }}><strong>Narration:</strong> {selectedJournal.narration}</div>
+            </div>
+
+            <div style={{ maxHeight: '250px', overflowY: 'auto', marginBottom: '16px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                    <th style={{ padding: '8px', textAlign: 'left' }}>Account Code</th>
+                    <th style={{ padding: '8px', textAlign: 'left' }}>Account / Description</th>
+                    <th style={{ padding: '8px', textAlign: 'right' }}>Debit (DR)</th>
+                    <th style={{ padding: '8px', textAlign: 'right' }}>Credit (CR)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedJournal.lines?.map((line: any, index: number) => (
+                    <tr key={index} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '8px', fontFamily: 'monospace', fontWeight: 600 }}>{line.accountCode}</td>
+                      <td style={{ padding: '8px', color: '#334155' }}>{line.description || `Account ${line.accountCode}`}</td>
+                      <td style={{ padding: '8px', textAlign: 'right', color: Number(line.debit) > 0 ? '#16a34a' : '#94a3b8', fontWeight: Number(line.debit) > 0 ? '700' : 'normal' }}>
+                        {Number(line.debit) > 0 ? `AED ${Number(line.debit).toFixed(2)}` : '-'}
+                      </td>
+                      <td style={{ padding: '8px', textAlign: 'right', color: Number(line.credit) > 0 ? '#2563eb' : '#94a3b8', fontWeight: Number(line.credit) > 0 ? '700' : 'normal' }}>
+                        {Number(line.credit) > 0 ? `AED ${Number(line.credit).toFixed(2)}` : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr style={{ borderTop: '2px solid #cbd5e1', fontWeight: 700, background: '#f8fafc' }}>
+                    <td colSpan={2} style={{ padding: '8px', textAlign: 'right' }}>Total:</td>
+                    <td style={{ padding: '8px', textAlign: 'right', color: '#16a34a' }}>AED {Number(selectedJournal.totalDebit).toFixed(2)}</td>
+                    <td style={{ padding: '8px', textAlign: 'right', color: '#2563eb' }}>AED {Number(selectedJournal.totalCredit).toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setSelectedJournal(null)} className="btn-secondary">Close Details</button>
+            </div>
           </div>
         </div>
       )}

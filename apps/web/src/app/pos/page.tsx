@@ -186,6 +186,70 @@ export default function PosBillingCounterPage() {
     setShowReceiptEditor(false);
   };
 
+  const handlePrintReceipt = () => {
+    const receiptEl = document.getElementById('thermal-receipt');
+    if (!receiptEl) return;
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0px';
+    iframe.style.height = '0px';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) return;
+
+    doc.write(`
+      <html>
+        <head>
+          <title>Print Receipt</title>
+          <style>
+            body {
+              margin: 0;
+              padding: 10px;
+              font-family: monospace;
+              font-size: 11px;
+              color: #000;
+              width: 72mm;
+            }
+            img {
+              max-height: 44px;
+              display: block;
+              margin: 0 auto 8px auto;
+              object-fit: contain;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+            }
+            th, td {
+              font-size: 11px;
+            }
+            @page {
+              margin: 0;
+              size: auto;
+            }
+          </style>
+        </head>
+        <body>
+          <div style="text-align: center;">
+            ${receiptEl.innerHTML}
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() {
+                window.frameElement.remove();
+              }, 1000);
+            }
+          </script>
+        </body>
+      </html>
+    `);
+    doc.close();
+  };
+
   const s = receiptSettings;
 
   return (
@@ -326,7 +390,7 @@ export default function PosBillingCounterPage() {
             <div>
               <p>Invoice <strong>{lastInvoice.invoiceNumber}</strong> saved to database. Inventory stock and ledger have been updated automatically.</p>
               <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
-                <button type="button" onClick={() => window.print()} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button type="button" onClick={handlePrintReceipt} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Printer size={14} /> Print Receipt
                 </button>
                 <button onClick={openEditor} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>

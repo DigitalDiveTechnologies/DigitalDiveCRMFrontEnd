@@ -8,14 +8,15 @@ import { Search, ChevronDown, Building, GitBranch, X, Plus, Check, Shield, LogOu
 export default function Header() {
   const router = useRouter();
 
-  const [orgName, setOrgName] = useState('Al Futtaim Trading LLC');
-  const [trnNumber, setTrnNumber] = useState('100293847500003');
-  const [activeBranch, setActiveBranch] = useState('Dubai Mall Branch');
+  const [orgName, setOrgName] = useState('');
+  const [trnNumber, setTrnNumber] = useState('');
+  const [activeBranch, setActiveBranch] = useState('');
+  const [tenantId, setTenantId] = useState('');
 
   // User session state
-  const [userName, setUserName] = useState('Fatima Al Mansoori');
-  const [userEmail, setUserEmail] = useState('auditor@alfuttaim.ae');
-  const [currentRole, setCurrentRole] = useState<'OWNER' | 'ACCOUNTANT' | 'BILLER_CASHIER' | 'INVENTORY_MANAGER' | 'AUDITOR' | 'SECONDARY_ADMIN'>('AUDITOR');
+  const [userName, setUserName] = useState('Logged User');
+  const [userEmail, setUserEmail] = useState('user@company.ae');
+  const [currentRole, setCurrentRole] = useState<'OWNER' | 'ACCOUNTANT' | 'BILLER_CASHIER' | 'INVENTORY_MANAGER' | 'AUDITOR' | 'SECONDARY_ADMIN'>('OWNER');
 
   // Modals state
   const [isOrgModalOpen, setIsOrgModalOpen] = useState(false);
@@ -23,15 +24,16 @@ export default function Header() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   // Form states
-  const [tempOrgName, setTempOrgName] = useState(orgName);
+  const [tempOrgName, setTempOrgName] = useState('');
+  const [tempTrnNumber, setTempTrnNumber] = useState('');
   const [newBranchName, setNewBranchName] = useState('');
 
-  const branchesList = [
+  const [branchesList, setBranchesList] = useState([
     { id: 'b1', name: 'Dubai Mall Branch', type: 'Retail Store' },
     { id: 'b2', name: 'Abu Dhabi Mall Branch', type: 'Retail Store' },
     { id: 'b3', name: 'Dubai Central Warehouse', type: 'Primary Depot' },
     { id: 'b4', name: 'Al Ain Branch', type: 'Retail Store' },
-  ];
+  ]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -42,7 +44,56 @@ export default function Header() {
           setUserName(session.name || 'Logged User');
           setUserEmail(session.email || 'user@company.ae');
           setCurrentRole(session.role || 'OWNER');
-        } catch (e) {}
+
+          // Load saved org/branch from localStorage first (fast, no flicker)
+          const savedOrg = localStorage.getItem('org_name');
+          const savedTrn = localStorage.getItem('org_trn');
+          const savedBranch = localStorage.getItem('active_branch');
+
+          if (savedOrg) setOrgName(savedOrg);
+          if (savedTrn) setTrnNumber(savedTrn);
+          if (savedBranch) setActiveBranch(savedBranch);
+
+          // Then fetch from backend if tenantId exists
+          if (session.tenantId) {
+            setTenantId(session.tenantId);
+            fetch(`http://localhost:3001/auth/tenants`, {
+              headers: {
+                'Content-Type': 'application/json',
+                'x-tenant-id': session.tenantId,
+                'Authorization': `Bearer ${session.accessToken || ''}`,
+              },
+            })
+              .then(r => r.ok ? r.json() : null)
+              .then((tenants: any[]) => {
+                if (!tenants || tenants.length === 0) return;
+                // Match current tenant
+                const myTenant = tenants.find((t: any) => t.id === session.tenantId) || tenants[0];
+                if (myTenant) {
+                  const name = myTenant.name || myTenant.companyName || myTenant.organizationName || savedOrg || 'My Organization';
+                  const trn = myTenant.trn || myTenant.trnNumber || savedTrn || '';
+                  setOrgName(name);
+                  setTrnNumber(trn);
+                  localStorage.setItem('org_name', name);
+                  if (trn) localStorage.setItem('org_trn', trn);
+                }
+              })
+              .catch(() => {
+                // Fallback to localStorage or default
+                if (!savedOrg) setOrgName('My Organization');
+              });
+          } else {
+            if (!savedOrg) setOrgName('My Organization');
+          }
+
+          if (!savedBranch) setActiveBranch('Head Office');
+        } catch (e) {
+          setOrgName('My Organization');
+          setActiveBranch('Head Office');
+        }
+      } else {
+        setOrgName('My Organization');
+        setActiveBranch('Head Office');
       }
     }
   }, []);
@@ -51,6 +102,9 @@ export default function Header() {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('user_session');
       localStorage.removeItem('active_user_role');
+      localStorage.removeItem('org_name');
+      localStorage.removeItem('org_trn');
+      localStorage.removeItem('active_branch');
       window.location.href = '/login';
     }
   };
@@ -59,6 +113,9 @@ export default function Header() {
     e.preventDefault();
     if (tempOrgName) {
       setOrgName(tempOrgName);
+      setTrnNumber(tempTrnNumber);
+      localStorage.setItem('org_name', tempOrgName);
+      if (tempTrnNumber) localStorage.setItem('org_trn', tempTrnNumber);
       setIsOrgModalOpen(false);
     }
   };
@@ -66,7 +123,10 @@ export default function Header() {
   const handleCreateBranch = (e: React.FormEvent) => {
     e.preventDefault();
     if (newBranchName) {
+      const newEntry = { id: `b-${Date.now()}`, name: newBranchName, type: 'Branch' };
+      setBranchesList(prev => [...prev, newEntry]);
       setActiveBranch(newBranchName);
+      localStorage.setItem('active_branch', newBranchName);
       setNewBranchName('');
       setIsBranchModalOpen(false);
     }
@@ -92,7 +152,7 @@ export default function Header() {
 
         {/* Interactive Tenant / Organization Button */}
         <button
-          onClick={() => { setTempOrgName(orgName); setIsOrgModalOpen(true); }}
+          onClick={() => { setTempOrgName(orgName); setTempTrnNumber(trnNumber); setIsOrgModalOpen(true); }}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -168,8 +228,8 @@ export default function Header() {
                 <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>UAE Tax Registration Number (15 Digits TRN)</label>
                 <input
                   type="text"
-                  value={trnNumber}
-                  onChange={(e) => setTrnNumber(e.target.value)}
+                  value={tempTrnNumber}
+                  onChange={(e) => setTempTrnNumber(e.target.value)}
                   style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem', fontFamily: 'monospace' }}
                 />
               </div>
@@ -202,7 +262,7 @@ export default function Header() {
                 return (
                   <button
                     key={b.id}
-                    onClick={() => { setActiveBranch(b.name); setIsBranchModalOpen(false); }}
+                    onClick={() => { setActiveBranch(b.name); localStorage.setItem('active_branch', b.name); setIsBranchModalOpen(false); }}
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',

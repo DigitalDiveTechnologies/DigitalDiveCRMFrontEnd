@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { FileText, Printer, Download, CheckCircle2, AlertCircle, Plus, Eye, Lock, Trash2, User } from 'lucide-react';
+import { FileText, Printer, Download, CheckCircle2, AlertCircle, Plus, Eye, Lock, Trash2, User, X } from 'lucide-react';
 import { can, getActiveUserRole } from '@/lib/permissions';
 import { downloadCsv } from '@/lib/exportUtils';
 import { api } from '@/lib/apiClient';
@@ -20,6 +20,7 @@ export default function SalesInvoicingPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [parties, setParties] = useState<any[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
   const [lines, setLines] = useState<InvoiceLineItem[]>([]);
 
   // Line creation input
@@ -375,7 +376,7 @@ export default function SalesInvoicingPage() {
               </thead>
               <tbody>
                 {invoices.map((inv) => (
-                  <tr key={inv.id}>
+                  <tr key={inv.id} onClick={() => setSelectedInvoice(inv)} style={{ cursor: 'pointer' }} className="hover-row">
                     <td style={{ fontWeight: 700, color: '#2563eb' }}>{inv.invoiceNumber}</td>
                     <td style={{ fontWeight: 600, color: '#0f172a' }}>{inv.customer?.name || 'Unknown'}</td>
                     <td style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}>{inv.customer?.trn || 'N/A'}</td>
@@ -391,6 +392,95 @@ export default function SalesInvoicingPage() {
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {/* Invoice Details Modal */}
+      {selectedInvoice && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div className="card-enterprise" style={{ width: '700px', maxWidth: '95%' }}>
+            
+            {/* Modal Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#0f172a' }}>
+                Tax Invoice Details: {selectedInvoice.invoiceNumber}
+              </h3>
+              <button onClick={() => setSelectedInvoice(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px', fontSize: '0.85rem' }}>
+              <div>
+                <h4 style={{ fontWeight: 700, color: '#475569', marginBottom: '6px' }}>Customer Information</h4>
+                <div style={{ color: '#0f172a', fontWeight: 600 }}>{selectedInvoice.customer?.name || 'Walk-in Customer'}</div>
+                {selectedInvoice.customer?.trn && <div style={{ color: '#64748b' }}>TRN: <span style={{ fontFamily: 'monospace' }}>{selectedInvoice.customer.trn}</span></div>}
+                {selectedInvoice.customer?.email && <div style={{ color: '#64748b' }}>Email: {selectedInvoice.customer.email}</div>}
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <h4 style={{ fontWeight: 700, color: '#475569', marginBottom: '6px' }}>Invoice Metadata</h4>
+                <div><strong>Issue Date:</strong> {new Date(selectedInvoice.invoiceDate).toLocaleString()}</div>
+                <div><strong>Status:</strong> <span className="badge-status badge-status-green" style={{ display: 'inline-block', marginTop: '4px' }}>{selectedInvoice.status || 'POSTED'}</span></div>
+              </div>
+            </div>
+
+            <div style={{ maxHeight: '250px', overflowY: 'auto', marginBottom: '20px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 600 }}>
+                    <th style={{ padding: '8px', textAlign: 'left' }}>Item Description</th>
+                    <th style={{ padding: '8px', textAlign: 'center' }}>Qty</th>
+                    <th style={{ padding: '8px', textAlign: 'right' }}>Unit Price (AED)</th>
+                    <th style={{ padding: '8px', textAlign: 'center' }}>VAT Rate</th>
+                    <th style={{ padding: '8px', textAlign: 'right' }}>VAT Amt (AED)</th>
+                    <th style={{ padding: '8px', textAlign: 'right' }}>Subtotal (AED)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedInvoice.lines?.map((line: any, idx: number) => {
+                    const lSub = Number(line.quantity || 0) * Number(line.unitPrice || 0);
+                    const lVat = line.vatCategory === 'STANDARD_5' ? lSub * 0.05 : 0;
+                    return (
+                      <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '8px', fontWeight: 500, color: '#0f172a' }}>{line.description}</td>
+                        <td style={{ padding: '8px', textAlign: 'center' }} className="num-tabular">{line.quantity}</td>
+                        <td style={{ padding: '8px', textAlign: 'right' }} className="num-tabular">AED {Number(line.unitPrice).toFixed(2)}</td>
+                        <td style={{ padding: '8px', textAlign: 'center' }}>
+                          <span className={line.vatCategory === 'STANDARD_5' ? 'badge-status badge-status-blue' : 'badge-status badge-status-green'}>
+                            {line.vatCategory === 'STANDARD_5' ? '5%' : '0%'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px', textAlign: 'right', color: '#059669' }} className="num-tabular">AED {lVat.toFixed(2)}</td>
+                        <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600 }} className="num-tabular">AED {lSub.toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
+              <div style={{ width: '280px', display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Subtotal (Excl. VAT):</span>
+                  <span className="num-tabular">AED {Number(selectedInvoice.subtotal || 0).toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#059669', fontWeight: 600 }}>
+                  <span>VAT Total (5%):</span>
+                  <span className="num-tabular">AED {Number(selectedInvoice.vatTotal || 0).toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #0f172a', paddingTop: '6px', fontWeight: 800, fontSize: '1rem', color: '#0f172a' }}>
+                  <span>Grand Total:</span>
+                  <span className="num-tabular">AED {Number(selectedInvoice.grandTotal || 0).toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+              <button onClick={() => setSelectedInvoice(null)} className="btn-secondary">Close Details</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

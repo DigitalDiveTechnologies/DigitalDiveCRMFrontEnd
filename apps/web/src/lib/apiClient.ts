@@ -75,6 +75,8 @@ export const api = {
   getItems: () => fetchFromApi<any[]>('/inventory/items'),
   createItem: (data: any) =>
     fetchFromApi('/inventory/items', { method: 'POST', body: JSON.stringify(data) }),
+  updateItem: (id: string, data: any) =>
+    fetchFromApi(`/inventory/items/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   getWarehouses: () => fetchFromApi<any[]>('/inventory/warehouses'),
   createWarehouse: (data: any) =>
     fetchFromApi('/inventory/warehouses', { method: 'POST', body: JSON.stringify(data) }),
@@ -82,6 +84,7 @@ export const api = {
     fetchFromApi('/inventory/transfers', { method: 'POST', body: JSON.stringify(data) }),
   adjustStock: (data: any) =>
     fetchFromApi('/inventory/adjustments', { method: 'POST', body: JSON.stringify(data) }),
+  getStockMovements: () => fetchFromApi<any[]>('/inventory/movements'),
 
   // Tax & E-Invoicing
   calculateTax: (lines: any[]) =>
@@ -139,4 +142,7 @@ export const api = {
     fetchFromApi('/sync/push', { method: 'POST', body: JSON.stringify(data) }),
   pullSync: (cursor?: string) =>
     fetchFromApi(`/sync/pull${cursor ? `?cursor=${cursor}` : ''}`),
+
+  // Audit Logs
+  getAuditLogs: () => fetchFromApi<any[]>('/auth/audit-logs'),
 };

@@ -6,6 +6,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import { User } from '../../database/entities/user.entity';
 import { Tenant } from '../../database/entities/tenant.entity';
 import { Branch } from '../../database/entities/branch.entity';
+import { EmailService } from '../email/email.service';
 
 const mockUser: Partial<User> = {
   id: 'usr-test-001',
@@ -42,6 +43,10 @@ const mockBranchRepo = {
   save: jest.fn(),
 };
 
+const mockEmailService = {
+  sendMail: jest.fn().mockResolvedValue({ success: true }),
+};
+
 describe('AuthService (Database-backed Authentication)', () => {
   let authService: AuthService;
 
@@ -52,11 +57,13 @@ describe('AuthService (Database-backed Authentication)', () => {
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
         { provide: getRepositoryToken(Tenant), useValue: mockTenantRepo },
         { provide: getRepositoryToken(Branch), useValue: mockBranchRepo },
+        { provide: EmailService, useValue: mockEmailService },
       ],
     }).compile();
 
     authService = module.get<AuthService>(AuthService);
   });
+
 
   it('should authenticate the default owner and return a valid session token', async () => {
     const session = await authService.login({ email: 'owner@digitaldive.ae', password: 'admin' });

@@ -1,5 +1,7 @@
-import { Injectable } from '@nestjs/common';
-import { AuditAction } from '../../database/entities/audit-log.entity';
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { AuditAction, AuditLogEntity } from '../../database/entities/audit-log.entity';
 
 export interface LogAuditInput {
   tenantId: string;
@@ -12,55 +14,46 @@ export interface LogAuditInput {
   metadata?: Record<string, any>;
 }
 
-export interface UserDeviceSession {
-  sessionId: string;
-  userId: string;
-  userEmail: string;
-  deviceType: string;
-  ipAddress: string;
-  lastActive: Date;
-  isRevoked: boolean;
-}
-
 @Injectable()
 export class AuditService {
-  private auditLogsStore: LogAuditInput[] = [];
-  private activeSessionsStore: UserDeviceSession[] = [];
+  private readonly logger = new Logger(AuditService.name);
+
+  constructor(
+    @InjectRepository(AuditLogEntity)
+    private readonly auditLogRepository: Repository<AuditLogEntity>,
+  ) {}
 
   /**
-   * Log an immutable security audit event with correlationId.
+   * Log an immutable security audit event and persist it to the database.
    */
   async logAuditEvent(input: LogAuditInput): Promise<{ auditId: string; correlationId: string }> {
-    const auditId = `AUD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    this.auditLogsStore.unshift({ ...input });
-    return { auditId, correlationId: input.correlationId };
-  }
-
-  /**
-   * Get all active device sessions for session tracking.
-   */
-  async getActiveSessions(): Promise<UserDeviceSession[]> {
-    return this.activeSessionsStore;
-  }
-
-  /**
-   * Revoke an active device session.
-   */
-  async revokeDeviceSession(sessionId: string, adminEmail: string): Promise<{ success: boolean; revokedSessionId: string }> {
-    const session = this.activeSessionsStore.find((s) => s.sessionId === sessionId);
-    if (session) {
-      session.isRevoked = true;
+    try {
+      const entry = this.auditLogRepository.create({
+        tenantId: input.tenantId,
+        userId: input.userId || null,
+        userEmail: input.userEmail,
+        action: input.action,
+        correlationId: input.correlationId,
+        ipAddress: input.ipAddress,
+        userAgent: input.userAgent || null,
+        metadata: input.metadata || null,
+      });
+      const saved = await this.auditLogRepository.save(entry);
+      return { auditId: saved.id, correlationId: saved.correlationId };
+    } catch (e) {
+      this.logger.error(`Failed to persist audit log: ${e.message}`);
+      return { auditId: `ERR-${Date.now()}`, correlationId: input.correlationId };
     }
+  }
 
-    await this.logAuditEvent({
-      tenantId: 'tenant-dxb-90210',
-      userEmail: adminEmail,
-      action: AuditAction.SESSION_REVOKED,
-      correlationId: `corr-rev-${Date.now()}`,
-      ipAddress: '194.170.92.1',
-      metadata: { revokedSessionId: sessionId },
+  /**
+   * Retrieve all audit log entries for a tenant, ordered newest-first.
+   */
+  async getAuditLogs(tenantId: string, limit = 200): Promise<AuditLogEntity[]> {
+    return this.auditLogRepository.find({
+      where: { tenantId },
+      order: { timestamp: 'DESC' },
+      take: limit,
     });
-
-    return { success: true, revokedSessionId: sessionId };
   }
 }

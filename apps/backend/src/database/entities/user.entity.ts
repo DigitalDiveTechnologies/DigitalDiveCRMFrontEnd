@@ -6,6 +6,7 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index()
   @Column({ type: 'varchar', length: 150, unique: true })
   email: string;
 
@@ -24,9 +25,13 @@ export class User {
   @Column({ type: 'varchar', length: 100, nullable: true })
   branchId?: string;
 
+  @Column({ type: 'boolean', default: true })
+  isActive: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
 }
+

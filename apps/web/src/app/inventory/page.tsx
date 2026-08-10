@@ -75,10 +75,18 @@ export default function InventoryPage() {
         fetchedWarehouses = await api.getWarehouses();
       }
       setWarehouses(fetchedWarehouses || []);
-      if (fetchedWarehouses && fetchedWarehouses.length >= 2) {
+      if (fetchedWarehouses && fetchedWarehouses.length > 0) {
         setFromWhId(fetchedWarehouses[0].id);
-        setToWhId(fetchedWarehouses[1].id);
+        if (fetchedWarehouses.length >= 2) {
+          setToWhId(fetchedWarehouses[1].id);
+        } else {
+          setToWhId(fetchedWarehouses[0].id);
+        }
       }
+
+      // Fetch stock movements
+      const fetchedMovements = await api.getStockMovements();
+      setMovements(fetchedMovements || []);
     } catch (e) {
       console.error('Failed to fetch inventory data', e);
     } finally {
@@ -272,6 +280,76 @@ export default function InventoryPage() {
               ))}
             </tbody>
           </table>
+        )}
+      </div>
+
+      {/* Stock Movements & Damage Logs */}
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#0f172a', marginTop: '32px', marginBottom: '12px' }}>Stock Movements & Write-off Audit Log</h2>
+      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)', marginBottom: '32px' }}>
+        {movements.length === 0 ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
+            No stock movements or adjustments recorded yet.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table-enterprise">
+              <thead>
+                <tr>
+                  <th>Date & Time</th>
+                  <th>Item SKU & Name</th>
+                  <th>Warehouse</th>
+                  <th>Activity Type</th>
+                  <th style={{ textAlign: 'right' }}>Qty Change</th>
+                  <th style={{ textAlign: 'right' }}>Cost / Rate</th>
+                  <th>Document Ref / Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {movements.map((m) => {
+                  const qtyVal = Number(m.quantity || 0);
+                  const isNegative = qtyVal < 0;
+                  return (
+                    <tr key={m.id}>
+                      <td style={{ color: '#475569', fontSize: '0.8rem' }}>{new Date(m.createdAt).toLocaleString()}</td>
+                      <td style={{ fontWeight: 600, color: '#0f172a' }}>
+                        <span style={{ fontFamily: 'monospace', color: '#2563eb', marginRight: '6px' }}>{m.item?.sku}</span>
+                        {m.item?.name}
+                      </td>
+                      <td>{m.warehouse?.name || 'Central Depot'}</td>
+                      <td>
+                        <span className={`badge-status ${
+                          m.movementType === 'ADJUSTMENT' ? 'badge-status-red' : 
+                          m.movementType === 'TRANSFER' ? 'badge-status-blue' : 
+                          m.movementType === 'PURCHASE' ? 'badge-status-green' : 'badge-status-blue'
+                        }`}>
+                          {m.movementType}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: isNegative ? '#dc2626' : '#16a34a' }} className="num-tabular">
+                        {isNegative ? '' : '+'}{qtyVal.toFixed(2)} units
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 600 }} className="num-tabular">
+                        AED {Number(m.costPrice || 0).toFixed(2)}
+                      </td>
+                      <td style={{ color: '#475569', fontSize: '0.8rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                            {m.sourceDocumentId}
+                          </span>
+                          <span>{m.movementType === 'ADJUSTMENT' ? 'Physical Stock Adjustment' : m.sourceDocumentType}</span>
+                        </div>
+                        {m.reason && (
+                          <div style={{ fontSize: '0.75rem', color: '#92400e', fontWeight: 600, background: '#fffbeb', border: '1px solid #fef3c7', padding: '2px 6px', borderRadius: '4px', marginTop: '4px', display: 'inline-block' }}>
+                            Reason: {m.reason}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 

@@ -9,13 +9,18 @@ import { TenantIsolationGuard } from './tenant-isolation.guard';
 import { User } from '../../database/entities/user.entity';
 import { Tenant } from '../../database/entities/tenant.entity';
 import { Branch } from '../../database/entities/branch.entity';
+import { AuditLogEntity } from '../../database/entities/audit-log.entity';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Tenant, Branch]),
+    TypeOrmModule.forFeature([User, Tenant, Branch, AuditLogEntity]),
+    EmailModule,
   ],
   controllers: [AuthController, TenantController],
   providers: [AuthService, PolicyService, AuditService, TenantIsolationGuard],
   exports: [AuthService, PolicyService, AuditService, TenantIsolationGuard],
 })
 export class AuthModule {}
+
+

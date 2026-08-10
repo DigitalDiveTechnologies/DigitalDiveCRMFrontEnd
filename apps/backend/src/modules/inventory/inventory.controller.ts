@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Headers } from '@nestjs/common';
+import { Controller, Post, Get, Body, Headers, Patch, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { InventoryService, StockTransferInput, StockAdjustmentInput } from './inventory.service';
 import { VatCategory } from '../tax/vat-calculator.service';
@@ -8,8 +8,10 @@ export interface CreateItemDto {
   sku: string;
   barcode?: string;
   unitPrice: number;
-  costPrice: number;
-  stockQuantity: number;
+  costPrice?: number;
+  stockQuantity?: number;
+  initialStock?: number;
+  reorderLevel?: number;
   vatCategory: VatCategory;
 }
 
@@ -37,10 +39,22 @@ export class InventoryController {
       sku: dto.sku,
       barcode: dto.barcode,
       unitPrice: dto.unitPrice,
-      purchasePrice: dto.costPrice,
-      initialStock: dto.stockQuantity,
+      purchasePrice: dto.costPrice || 0,
+      initialStock: dto.initialStock !== undefined ? dto.initialStock : (dto.stockQuantity || 0),
+      reorderLevel: dto.reorderLevel || 0,
       vatCategory: dto.vatCategory,
     });
+  }
+
+  @Patch('items/:id')
+  @ApiOperation({ summary: 'Update an inventory item' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  async updateItem(
+    @Headers('x-tenant-id') tenantId: string = 'tenant-default',
+    @Param('id') id: string,
+    @Body() dto: any,
+  ) {
+    return this.inventoryService.updateItem(tenantId, id, dto);
   }
 
   @Get('warehouses')
@@ -84,5 +98,12 @@ export class InventoryController {
       ...dto,
       tenantId,
     });
+  }
+
+  @Get('movements')
+  @ApiOperation({ summary: 'List inventory stock movements & adjustments' })
+  @ApiHeader({ name: 'x-tenant-id', required: true })
+  async getStockMovements(@Headers('x-tenant-id') tenantId: string = 'tenant-default') {
+    return this.inventoryService.getStockMovements(tenantId);
   }
 }
