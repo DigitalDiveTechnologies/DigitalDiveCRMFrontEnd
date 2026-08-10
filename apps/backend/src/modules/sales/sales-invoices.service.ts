@@ -205,15 +205,15 @@ export class SalesInvoicesService {
             </tr>
             <tr>
               <td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">Subtotal</td>
-              <td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: bold; color: #0f172a;">${savedInvoice.subtotal.toFixed(2)} AED</td>
+              <td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: bold; color: #0f172a;">${Number(savedInvoice.subtotal).toFixed(2)} AED</td>
             </tr>
             <tr>
               <td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; color: #64748b;">VAT Total (5%)</td>
-              <td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: bold; color: #0f172a;">${savedInvoice.vatTotal.toFixed(2)} AED</td>
+              <td style="padding: 8px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: bold; color: #0f172a;">${Number(savedInvoice.vatTotal).toFixed(2)} AED</td>
             </tr>
             <tr style="font-size: 1.1rem; font-weight: bold;">
               <td style="padding: 12px 0; color: #0f172a;">Total Payable</td>
-              <td style="padding: 12px 0; text-align: right; color: #059669;">${savedInvoice.grandTotal.toFixed(2)} AED</td>
+              <td style="padding: 12px 0; text-align: right; color: #059669;">${Number(savedInvoice.grandTotal).toFixed(2)} AED</td>
             </tr>
           </table>
           <p style="margin-top: 24px; color: #64748b; font-size: 0.9rem;">Thank you for your business!</p>

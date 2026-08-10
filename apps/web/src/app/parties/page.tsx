@@ -115,11 +115,11 @@ export default function PartiesPage() {
 
   // Associated transactions filtering for profiles
   const getAssociatedInvoices = (party: PartyItem) => {
-    return invoices.filter(inv => inv.customerName === party.name);
+    return invoices.filter(inv => inv.customerId === party.id || inv.customer?.id === party.id);
   };
 
   const getAssociatedBills = (party: PartyItem) => {
-    return bills.filter(b => b.supplierName === party.name);
+    return bills.filter(b => b.supplierId === party.id || b.supplier?.id === party.id);
   };
 
   return (
@@ -208,10 +208,10 @@ export default function PartiesPage() {
                     {p.email}<br />{p.phone}
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 500 }} className="num-tabular">
-                    AED {p.creditLimit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    AED {Number(p.creditLimit || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, color: p.balance >= 0 ? '#059669' : '#dc2626' }} className="num-tabular">
-                    AED {p.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: Number(p.balance || 0) >= 0 ? '#059669' : '#dc2626' }} className="num-tabular">
+                    AED {Number(p.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </td>
                   <td style={{ textAlign: 'center', color: '#64748b', fontSize: '0.8rem' }}>
                     View Profile <ArrowRight size={12} style={{ display: 'inline', marginLeft: '2px' }} />
@@ -293,8 +293,8 @@ export default function PartiesPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>
                   <Wallet size={14} color="#64748b" /> Account Balance
                 </div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: selectedParty.balance >= 0 ? '#059669' : '#dc2626', marginTop: '6px' }} className="num-tabular">
-                  AED {selectedParty.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: Number(selectedParty.balance || 0) >= 0 ? '#059669' : '#dc2626', marginTop: '6px' }} className="num-tabular">
+                  AED {Number(selectedParty.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </div>
               </div>
 
@@ -303,7 +303,7 @@ export default function PartiesPage() {
                   <ShieldCheck size={14} color="#64748b" /> Credit Limit
                 </div>
                 <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1e293b', marginTop: '6px' }} className="num-tabular">
-                  AED {selectedParty.creditLimit.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  AED {Number(selectedParty.creditLimit || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </div>
               </div>
             </div>
@@ -335,10 +335,10 @@ export default function PartiesPage() {
                       </thead>
                       <tbody>
                         {getAssociatedInvoices(selectedParty).map(inv => (
-                          <tr key={inv.invoiceId}>
-                            <td style={{ fontWeight: 700, color: '#2563eb' }}>{inv.invoiceId}</td>
-                            <td>{inv.issueDate}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }} className="num-tabular">AED {inv.grandTotal.toFixed(2)}</td>
+                          <tr key={inv.id}>
+                            <td style={{ fontWeight: 700, color: '#2563eb' }}>{inv.invoiceNumber || inv.id.substring(0, 8)}</td>
+                            <td>{inv.invoiceDate ? new Date(inv.invoiceDate).toLocaleDateString() : 'N/A'}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 600 }} className="num-tabular">AED {Number(inv.grandTotal).toFixed(2)}</td>
                             <td style={{ textAlign: 'center' }}><span className="badge-status badge-status-green" style={{ fontSize: '0.7rem', padding: '2px 6px' }}>{inv.status}</span></td>
                           </tr>
                         ))}
@@ -369,11 +369,11 @@ export default function PartiesPage() {
                       </thead>
                       <tbody>
                         {getAssociatedBills(selectedParty).map(bill => (
-                          <tr key={bill.billId}>
-                            <td style={{ fontWeight: 700, color: '#d97706' }}>{bill.billId}</td>
+                          <tr key={bill.id}>
+                            <td style={{ fontWeight: 700, color: '#d97706' }}>{bill.billNumber || bill.id.substring(0, 8)}</td>
                             <td style={{ fontFamily: 'monospace' }}>{bill.supplierBillNumber}</td>
-                            <td>{bill.billDate}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }} className="num-tabular">AED {bill.grandTotal.toFixed(2)}</td>
+                            <td>{bill.billDate ? new Date(bill.billDate).toLocaleDateString() : 'N/A'}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 600 }} className="num-tabular">AED {Number(bill.grandTotal).toFixed(2)}</td>
                           </tr>
                         ))}
                       </tbody>
