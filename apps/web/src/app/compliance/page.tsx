@@ -1,221 +1,345 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Send, CheckCircle2, RefreshCw, AlertTriangle, User, LogIn, Key, Download, Package, FileText, ArrowLeftRight } from 'lucide-react';
+import { FileCode, RefreshCw, Send, CheckCircle2, QrCode, Clipboard, FileText, Building, Check, ArrowRight } from 'lucide-react';
 import { api } from '@/lib/apiClient';
 
-const ACTION_META: Record<string, { label: string; color: string; badgeClass: string; icon: React.ReactNode }> = {
-  USER_LOGIN:           { label: 'User Login',           color: '#2563eb', badgeClass: 'badge-status-blue',  icon: <LogIn size={12} /> },
-  USER_LOGOUT:          { label: 'User Logout',          color: '#64748b', badgeClass: 'badge-status-blue',  icon: <LogIn size={12} /> },
-  USER_CREATED:         { label: 'User Created',         color: '#059669', badgeClass: 'badge-status-green', icon: <User size={12} /> },
-  ROLE_CHANGE:          { label: 'Role Changed',         color: '#d97706', badgeClass: 'badge-status-amber', icon: <Key size={12} /> },
-  PRIVILEGE_ESCALATION: { label: 'Privilege Escalated',  color: '#dc2626', badgeClass: 'badge-status-red',   icon: <AlertTriangle size={12} /> },
-  DATA_EXPORT:          { label: 'Data Exported',        color: '#7c3aed', badgeClass: 'badge-status-blue',  icon: <Download size={12} /> },
-  DOCUMENT_ACCESS:      { label: 'Document Accessed',    color: '#475569', badgeClass: 'badge-status-blue',  icon: <FileText size={12} /> },
-  SESSION_REVOKED:      { label: 'Session Revoked',      color: '#dc2626', badgeClass: 'badge-status-red',   icon: <AlertTriangle size={12} /> },
-  INVOICE_CREATED:      { label: 'Invoice Created',      color: '#059669', badgeClass: 'badge-status-green', icon: <FileText size={12} /> },
-  STOCK_ADJUSTMENT:     { label: 'Stock Write-off',      color: '#dc2626', badgeClass: 'badge-status-red',   icon: <Package size={12} /> },
-  STOCK_TRANSFER:       { label: 'Stock Transfer',       color: '#2563eb', badgeClass: 'badge-status-blue',  icon: <ArrowLeftRight size={12} /> },
-  PURCHASE_RECORDED:    { label: 'Purchase Recorded',    color: '#059669', badgeClass: 'badge-status-green', icon: <Package size={12} /> },
-};
-
 export default function CompliancePage() {
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedLog, setSelectedLog] = useState<any | null>(null);
-  const [filterAction, setFilterAction] = useState('ALL');
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
 
-  const loadLogs = async () => {
-    setIsLoading(true);
+  // Active Organization contexts
+  const [orgName, setOrgName] = useState('My Business');
+  const [trn, setTrn] = useState('100999888700001');
+
+  // Submission response console
+  const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
+  const [clearanceResult, setClearanceResult] = useState<any | null>(null);
+  const [xmlContent, setXmlContent] = useState<string>('');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedOrg = localStorage.getItem('org_name');
+      const savedTrn = localStorage.getItem('org_trn');
+      if (savedOrg) setOrgName(savedOrg);
+      if (savedTrn) setTrn(savedTrn);
+    }
+    loadInvoices();
+  }, []);
+
+  const loadInvoices = async () => {
+    setLoading(true);
     try {
-      const logs = await api.getAuditLogs();
-      setAuditLogs(logs || []);
+      const data = await api.getInvoices();
+      setInvoices(data || []);
     } catch (e) {
-      console.error('Failed to load audit logs', e);
+      console.error('Failed to load sales invoices', e);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadLogs();
-  }, []);
+  const handleTransmitEInvoice = async (invoice: any) => {
+    setSubmittingId(invoice.id);
+    setSelectedInvoice(invoice);
+    setClearanceResult(null);
 
-  const filteredLogs = filterAction === 'ALL'
-    ? auditLogs
-    : auditLogs.filter(l => l.action === filterAction);
+    // Mock XML structure conforming to UBL 2.1 Invoice
+    const generatedXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+         xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+  <cbc:UBLVersionID>2.1</cbc:UBLVersionID>
+  <cbc:CustomizationID>urn:fdp:gov:ae:e-invoicing:v1.0</cbc:CustomizationID>
+  <cbc:ID>${invoice.invoiceNumber || 'INV-TEMP'}</cbc:ID>
+  <cbc:UUID>${crypto.randomUUID()}</cbc:UUID>
+  <cbc:IssueDate>${new Date(invoice.createdAt).toISOString().split('T')[0]}</cbc:IssueDate>
+  <cbc:InvoiceTypeCode name="0100000">388</cbc:InvoiceTypeCode>
+  <cbc:DocumentCurrencyCode>AED</cbc:DocumentCurrencyCode>
 
-  const actionTypes = ['ALL', ...Object.keys(ACTION_META)];
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      <cac:PartyName>
+        <cbc:Name>${orgName}</cbc:Name>
+      </cac:PartyName>
+      <cac:PartyTaxScheme>
+        <cbc:CompanyID>${trn}</cbc:CompanyID>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+
+  <cac:AccountingCustomerParty>
+    <cac:Party>
+      <cac:PartyName>
+        <cbc:Name>${invoice.customerName || 'Walk-in Customer'}</cbc:Name>
+      </cac:PartyName>
+      ${invoice.customerTrn ? `
+      <cac:PartyTaxScheme>
+        <cbc:CompanyID>${invoice.customerTrn}</cbc:CompanyID>
+        <cac:TaxScheme>
+          <cbc:ID>VAT</cbc:ID>
+        </cac:TaxScheme>
+      </cac:PartyTaxScheme>` : ''}
+    </cac:Party>
+  </cac:AccountingCustomerParty>
+
+  <cac:LegalMonetaryTotal>
+    <cbc:LineExtensionAmount currencyID="AED">${Number(invoice.subtotal).toFixed(2)}</cbc:LineExtensionAmount>
+    <cbc:TaxExclusiveAmount currencyID="AED">${Number(invoice.subtotal).toFixed(2)}</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="AED">${Number(invoice.grandTotal).toFixed(2)}</cbc:TaxInclusiveAmount>
+    <cbc:AllowanceTotalAmount currencyID="AED">0.00</cbc:AllowanceTotalAmount>
+    <cbc:ChargeTotalAmount currencyID="AED">0.00</cbc:ChargeTotalAmount>
+    <cbc:PayableAmount currencyID="AED">${Number(invoice.grandTotal).toFixed(2)}</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+</Invoice>`;
+
+    setXmlContent(generatedXml);
+
+    try {
+      const res = await api.submitEInvoice({
+        invoiceNumber: invoice.invoiceNumber,
+        issueDate: new Date(invoice.createdAt).toISOString().split('T')[0],
+        sellerTrn: trn.replace(/[^0-9]/g, '') || '100999888700001',
+        sellerName: orgName,
+        buyerTrn: invoice.customerTrn || 'N/A',
+        buyerName: invoice.customerName || 'Walk-in Customer',
+        subtotal: Number(invoice.subtotal),
+        vatTotal: Number(invoice.vatTotal),
+        grandTotal: Number(invoice.grandTotal),
+        items: (invoice.lines || []).map((l: any) => ({
+          description: l.description || 'Product Item',
+          quantity: Number(l.quantity || 1),
+          unitPrice: Number(l.unitPrice || 0),
+          vatAmount: Number(l.vatAmount || 0),
+        })),
+      });
+
+      setClearanceResult(res);
+    } catch (e: any) {
+      console.error(e);
+      alert(`FTA Gateway Rejected: ${e.message || e}`);
+    } finally {
+      setSubmittingId(null);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert('Copied to clipboard!');
+  };
 
   return (
     <div style={{ maxWidth: '1140px', margin: '0 auto' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#0f172a' }}>Security Audit Log</h1>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <FileCode size={28} color="#2563eb" /> UAE FTA E-Invoicing Gateway
+          </h1>
           <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '2px' }}>
-            Immutable real-time trail of all system actions — logins, role changes, stock write-offs, and more.
+            Submit sales invoices to ASP / Federal Tax Authority Sandbox. Generate UBL 2.1 XML and cryptographic QR clearance.
           </p>
         </div>
-        <button
-          onClick={loadLogs}
-          disabled={isLoading}
-          className="btn-secondary"
-          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-        >
-          <RefreshCw size={14} className={isLoading ? 'spin' : ''} />
-          {isLoading ? 'Refreshing...' : 'Refresh Logs'}
+        <button onClick={loadInvoices} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }} disabled={loading}>
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh Invoices
         </button>
       </div>
 
-      {/* Stats row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-        <div className="card-enterprise">
-          <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Total Events Logged</div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a' }}>{auditLogs.length}</div>
+      {/* Corporate profile card */}
+      <div className="card-enterprise" style={{ marginBottom: '24px', display: 'flex', gap: '24px', alignItems: 'center', background: '#f8fafc' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ background: '#eff6ff', padding: '10px', borderRadius: '8px', color: '#2563eb' }}>
+            <Building size={24} />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>TRANSMITTING BUSINESS (SELLER)</div>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>{orgName}</div>
+          </div>
         </div>
-        <div className="card-enterprise">
-          <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Login Events</div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#2563eb' }}>{auditLogs.filter(l => l.action === 'USER_LOGIN').length}</div>
+        <div style={{ width: '1px', height: '40px', background: '#cbd5e1' }} />
+        <div>
+          <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>UAE FTA TAX REGISTRATION NUMBER (TRN)</div>
+          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>{trn}</div>
         </div>
-        <div className="card-enterprise">
-          <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Role Changes</div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#d97706' }}>{auditLogs.filter(l => l.action === 'ROLE_CHANGE').length}</div>
-        </div>
-        <div className="card-enterprise">
-          <div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Stock Write-offs</div>
-          <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#dc2626' }}>{auditLogs.filter(l => l.action === 'STOCK_ADJUSTMENT').length}</div>
+        <div style={{ marginLeft: 'auto' }}>
+          <span className="badge-status badge-status-green" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <CheckCircle2 size={12} /> Connected to ASP Sandbox
+          </span>
         </div>
       </div>
 
-      {/* Filter by action type */}
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-        {actionTypes.map(a => (
-          <button
-            key={a}
-            onClick={() => setFilterAction(a)}
-            style={{
-              padding: '4px 12px',
-              borderRadius: '20px',
-              border: filterAction === a ? '1.5px solid #2563eb' : '1px solid #e2e8f0',
-              background: filterAction === a ? '#eff6ff' : '#ffffff',
-              color: filterAction === a ? '#2563eb' : '#64748b',
-              fontWeight: filterAction === a ? 700 : 400,
-              fontSize: '0.78rem',
-              cursor: 'pointer',
-            }}
-          >
-            {a === 'ALL' ? 'All Events' : (ACTION_META[a]?.label || a)}
-          </button>
-        ))}
-      </div>
-
-      {/* Audit Log Table */}
-      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 1px 3px 0 rgba(0,0,0,0.05)' }}>
-        {isLoading ? (
-          <div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8' }}>
-            <RefreshCw size={24} style={{ margin: '0 auto 8px', display: 'block' }} />
-            Loading audit logs from database...
+      {/* Workspace */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.8fr', gap: '20px' }}>
+        {/* Left pane: Invoices list */}
+        <div className="card-enterprise" style={{ padding: '0', overflow: 'hidden' }}>
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid #e2e8f0', fontWeight: 600, color: '#0f172a' }}>
+            Sales Invoices Awaiting Transmission
           </div>
-        ) : filteredLogs.length === 0 ? (
-          <div style={{ padding: '60px', textAlign: 'center', color: '#94a3b8' }}>
-            <ShieldCheck size={32} style={{ margin: '0 auto 12px', display: 'block', color: '#cbd5e1' }} />
-            <div style={{ fontWeight: 600, marginBottom: '4px' }}>No audit events yet</div>
-            <div style={{ fontSize: '0.82rem' }}>Events will appear here as users log in, change roles, post invoices, or adjust stock.</div>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="table-enterprise">
-              <thead>
-                <tr>
-                  <th>Timestamp</th>
-                  <th>Event Type</th>
-                  <th>User / Email</th>
-                  <th>IP Address</th>
-                  <th>Correlation ID</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredLogs.map((log) => {
-                  const meta = ACTION_META[log.action] || { label: log.action, badgeClass: 'badge-status-blue', icon: <ShieldCheck size={12} /> };
-                  return (
-                    <tr
-                      key={log.id}
-                      onClick={() => setSelectedLog(log)}
-                      style={{ cursor: 'pointer' }}
-                      className="hover-row"
+          {loading ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>Loading invoices list...</div>
+          ) : invoices.length === 0 ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>No sales invoices registered in system.</div>
+          ) : (
+            <div style={{ overflowY: 'auto', maxHeight: '550px' }}>
+              {invoices.map((inv) => (
+                <div
+                  key={inv.id}
+                  style={{
+                    padding: '12px 16px',
+                    borderBottom: '1px solid #f1f5f9',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    background: selectedInvoice?.id === inv.id ? '#eff6ff' : '#ffffff',
+                  }}
+                  onClick={() => { setSelectedInvoice(inv); setClearanceResult(null); setXmlContent(''); }}
+                >
+                  <div>
+                    <strong style={{ display: 'block', fontSize: '0.88rem', color: '#0f172a' }}>{inv.invoiceNumber}</strong>
+                    <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{inv.customerName || 'Walk-in Customer'}</span>
+                    <span style={{ display: 'block', fontSize: '0.72rem', color: '#94a3b8', marginTop: '2px' }}>
+                      {new Date(inv.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a' }}>AED {Number(inv.grandTotal).toFixed(2)}</div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleTransmitEInvoice(inv); }}
+                      disabled={submittingId === inv.id}
+                      style={{
+                        marginTop: '6px',
+                        border: 'none',
+                        background: '#2563eb',
+                        color: '#ffffff',
+                        padding: '4px 10px',
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
                     >
-                      <td style={{ fontSize: '0.78rem', color: '#475569', whiteSpace: 'nowrap' }}>
-                        {new Date(log.timestamp).toLocaleString()}
-                      </td>
-                      <td>
-                        <span className={`badge-status ${meta.badgeClass}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                          {meta.icon} {meta.label}
-                        </span>
-                      </td>
-                      <td style={{ fontWeight: 600, color: '#0f172a', fontSize: '0.85rem' }}>{log.userEmail}</td>
-                      <td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748b' }}>{log.ipAddress}</td>
-                      <td style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: '#94a3b8' }}>{log.correlationId}</td>
-                      <td style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                        {log.metadata?.role && <span>Role: <strong>{log.metadata.role}</strong></span>}
-                        {log.metadata?.newRole && <span>→ <strong>{log.metadata.newRole}</strong></span>}
-                        {log.metadata?.newUserEmail && <span>New user: <strong>{log.metadata.newUserEmail}</strong></span>}
-                        {log.metadata?.revokedSessionId && <span>Session: <strong>{log.metadata.revokedSessionId}</strong></span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Detail Modal */}
-      {selectedLog && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-          <div className="card-enterprise" style={{ width: '580px', maxWidth: '95%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '16px' }}>
-              <h3 style={{ fontWeight: 700, fontSize: '1.05rem', color: '#0f172a' }}>Audit Event Detail</h3>
-              <button onClick={() => setSelectedLog(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '1.2rem' }}>✕</button>
+                      {submittingId === inv.id ? 'Sending...' : 'Transmit'} <Send size={10} />
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.85rem', marginBottom: '16px' }}>
-              <div><strong style={{ color: '#475569' }}>Event ID:</strong><br /><span style={{ fontFamily: 'monospace', fontSize: '0.78rem' }}>{selectedLog.id}</span></div>
-              <div><strong style={{ color: '#475569' }}>Timestamp:</strong><br />{new Date(selectedLog.timestamp).toLocaleString()}</div>
-              <div><strong style={{ color: '#475569' }}>Action:</strong><br />
-                <span className={`badge-status ${ACTION_META[selectedLog.action]?.badgeClass || 'badge-status-blue'}`}>
-                  {ACTION_META[selectedLog.action]?.label || selectedLog.action}
-                </span>
-              </div>
-              <div><strong style={{ color: '#475569' }}>User Email:</strong><br />{selectedLog.userEmail}</div>
-              <div><strong style={{ color: '#475569' }}>IP Address:</strong><br /><span style={{ fontFamily: 'monospace' }}>{selectedLog.ipAddress}</span></div>
-              <div><strong style={{ color: '#475569' }}>Correlation ID:</strong><br /><span style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{selectedLog.correlationId}</span></div>
-            </div>
-
-            {selectedLog.userAgent && (
-              <div style={{ marginBottom: '12px', fontSize: '0.8rem' }}>
-                <strong style={{ color: '#475569' }}>User Agent:</strong>
-                <div style={{ background: '#f8fafc', padding: '6px 10px', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.72rem', color: '#64748b', marginTop: '4px', wordBreak: 'break-all' }}>{selectedLog.userAgent}</div>
-              </div>
-            )}
-
-            {selectedLog.metadata && Object.keys(selectedLog.metadata).length > 0 && (
-              <div style={{ marginBottom: '16px', fontSize: '0.8rem' }}>
-                <strong style={{ color: '#475569' }}>Event Metadata:</strong>
-                <pre style={{ background: '#f8fafc', padding: '10px', borderRadius: '6px', fontSize: '0.75rem', color: '#334155', marginTop: '6px', overflowX: 'auto', border: '1px solid #e2e8f0' }}>
-                  {JSON.stringify(selectedLog.metadata, null, 2)}
-                </pre>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={() => setSelectedLog(null)} className="btn-secondary">Close</button>
-            </div>
-          </div>
+          )}
         </div>
-      )}
+
+        {/* Right pane: E-Invoicing Console */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {selectedInvoice ? (
+            <>
+              {/* Submission console */}
+              <div className="card-enterprise">
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: '14px', color: '#0f172a' }}>
+                  Compliance Console: {selectedInvoice.invoiceNumber}
+                </h3>
+
+                {clearanceResult ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#ecfdf5', padding: '12px', borderRadius: '6px', border: '1px solid #a7f3d0' }}>
+                      <CheckCircle2 color="#059669" size={24} />
+                      <div>
+                        <strong style={{ color: '#065f46', fontSize: '0.9rem', display: 'block' }}>E-INVOICE CLEARED & REPORTED Successfully</strong>
+                        <span style={{ fontSize: '0.78rem', color: '#047857' }}>Cleared via FTA ASP Sandbox at {new Date(clearanceResult.submissionTimestamp).toLocaleTimeString()}</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.82rem' }}>
+                      <div>
+                        <span style={{ color: '#64748b', fontWeight: 600, display: 'block', marginBottom: '2px' }}>E-INVOICE UUID</span>
+                        <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', display: 'block', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {clearanceResult.eInvoiceUuid}
+                        </code>
+                      </div>
+                      <div>
+                        <span style={{ color: '#64748b', fontWeight: 600, display: 'block', marginBottom: '2px' }}>CRYPTOGRAPHIC SHA-256 HASH</span>
+                        <code style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', display: 'block', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {clearanceResult.xmlHash}
+                        </code>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '16px', borderTop: '1px solid #e2e8f0', paddingTop: '16px' }}>
+                      <div>
+                        <span style={{ color: '#64748b', fontWeight: 600, display: 'block', fontSize: '0.82rem', marginBottom: '6px' }}>FTA Compliance QR Output</span>
+                        <div style={{ border: '1px solid #cbd5e1', padding: '8px', borderRadius: '6px', background: '#ffffff', width: '100px', height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <QrCode size={80} color="#0f172a" />
+                        </div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <span style={{ color: '#64748b', fontWeight: 600, display: 'block', fontSize: '0.82rem', marginBottom: '4px' }}>QR Code Decoded Content</span>
+                        <textarea
+                          readOnly
+                          value={atob(clearanceResult.qrCodePayload)}
+                          style={{ width: '100%', height: '70px', padding: '6px', fontSize: '0.75rem', fontFamily: 'monospace', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#f8fafc', resize: 'none' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>
+                    <p style={{ fontSize: '0.88rem' }}>This invoice has not been transmitted to the tax authority yet.</p>
+                    <button
+                      onClick={() => handleTransmitEInvoice(selectedInvoice)}
+                      style={{
+                        marginTop: '12px',
+                        border: 'none',
+                        background: '#2563eb',
+                        color: '#ffffff',
+                        padding: '8px 16px',
+                        borderRadius: '6px',
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      Transmit Invoice to FTA Gateway <Send size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* XML Code previewer */}
+              {xmlContent && (
+                <div className="card-enterprise" style={{ padding: '0', overflow: 'hidden' }}>
+                  <div style={{ padding: '10px 16px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <FileText size={14} /> Generated UBL 2.1 XML Payload
+                    </span>
+                    <button
+                      onClick={() => copyToClipboard(xmlContent)}
+                      style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#2563eb', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', fontWeight: 600 }}
+                    >
+                      <Clipboard size={12} /> Copy XML
+                    </button>
+                  </div>
+                  <pre style={{ margin: 0, padding: '12px', fontSize: '0.72rem', fontFamily: 'monospace', background: '#0f172a', color: '#38bdf8', height: '240px', overflowY: 'auto' }}>
+                    {xmlContent}
+                  </pre>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="card-enterprise" style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
+              Select a sales invoice from the left panel to begin UBL 2.1 compliance check.
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

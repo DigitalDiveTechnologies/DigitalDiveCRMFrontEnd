@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Search, ChevronDown, Building, GitBranch, X, Plus, Check, Shield, LogOut, User } from 'lucide-react';
+import { api } from '@/lib/apiClient';
 
 export default function Header() {
   const router = useRouter();
@@ -28,12 +29,7 @@ export default function Header() {
   const [tempTrnNumber, setTempTrnNumber] = useState('');
   const [newBranchName, setNewBranchName] = useState('');
 
-  const [branchesList, setBranchesList] = useState([
-    { id: 'b1', name: 'Dubai Mall Branch', type: 'Retail Store' },
-    { id: 'b2', name: 'Abu Dhabi Mall Branch', type: 'Retail Store' },
-    { id: 'b3', name: 'Dubai Central Warehouse', type: 'Primary Depot' },
-    { id: 'b4', name: 'Al Ain Branch', type: 'Retail Store' },
-  ]);
+  const [branchesList, setBranchesList] = useState<any[]>([]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -67,7 +63,6 @@ export default function Header() {
               .then(r => r.ok ? r.json() : null)
               .then((tenants: any[]) => {
                 if (!tenants || tenants.length === 0) return;
-                // Match current tenant
                 const myTenant = tenants.find((t: any) => t.id === session.tenantId) || tenants[0];
                 if (myTenant) {
                   const name = myTenant.name || myTenant.companyName || myTenant.organizationName || savedOrg || 'My Organization';
@@ -79,9 +74,20 @@ export default function Header() {
                 }
               })
               .catch(() => {
-                // Fallback to localStorage or default
                 if (!savedOrg) setOrgName('My Organization');
               });
+
+            // Fetch real branches list
+            api.getBranches(session.tenantId)
+              .then((branches) => {
+                setBranchesList(branches || []);
+                const savedBranch = localStorage.getItem('active_branch');
+                if (!savedBranch && branches && branches.length > 0) {
+                  setActiveBranch(branches[0].name);
+                  localStorage.setItem('active_branch', branches[0].name);
+                }
+              })
+              .catch(err => console.error('Failed to load branches', err));
           } else {
             if (!savedOrg) setOrgName('My Organization');
           }
@@ -120,15 +126,24 @@ export default function Header() {
     }
   };
 
-  const handleCreateBranch = (e: React.FormEvent) => {
+  const handleCreateBranch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newBranchName) {
-      const newEntry = { id: `b-${Date.now()}`, name: newBranchName, type: 'Branch' };
-      setBranchesList(prev => [...prev, newEntry]);
-      setActiveBranch(newBranchName);
-      localStorage.setItem('active_branch', newBranchName);
-      setNewBranchName('');
-      setIsBranchModalOpen(false);
+    if (newBranchName && tenantId) {
+      try {
+        const branchCode = 'BR-' + Date.now().toString().slice(-4);
+        const saved = await api.createBranch(tenantId, {
+          name: newBranchName,
+          code: branchCode,
+          location: 'Dubai, UAE',
+        });
+        setBranchesList(prev => [...prev, saved]);
+        setActiveBranch(saved.name);
+        localStorage.setItem('active_branch', saved.name);
+        setNewBranchName('');
+        setIsBranchModalOpen(false);
+      } catch (err) {
+        console.error('Failed to create branch', err);
+      }
     }
   };
 
@@ -277,7 +292,7 @@ export default function Header() {
                   >
                     <div>
                       <strong style={{ display: 'block', fontSize: '0.88rem', color: isSelected ? '#047857' : '#0f172a' }}>{b.name}</strong>
-                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{b.type}</span>
+                      <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Code: {b.code}</span>
                     </div>
                     {isSelected && <Check size={16} color="#059669" />}
                   </button>
