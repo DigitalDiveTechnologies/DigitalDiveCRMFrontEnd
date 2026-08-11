@@ -564,7 +564,7 @@ export default function PosBillingCounterPage() {
           </div>
 
           {/* UAE VAT Compliance Panel */}
-          {cart.length > 0 && (
+          {selectedCustomerId && (
             <div style={{
               margin: '12px 0',
               padding: '10px 12px',
