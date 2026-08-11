@@ -54,6 +54,7 @@ export default function PosBillingCounterPage() {
   const [items, setItems] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [customCustomerName, setCustomCustomerName] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD'>('CASH');
   const [receiptSuccess, setReceiptSuccess] = useState<boolean>(false);
   const [lastInvoice, setLastInvoice] = useState<any>(null);
@@ -83,7 +84,7 @@ export default function PosBillingCounterPage() {
       ) || [];
 
       let walkIn = activeCustomers.find((c: any) => c.name.toLowerCase().includes('walk-in'));
-      if (!walkIn && activeCustomers.length === 0) {
+      if (!walkIn) {
         walkIn = await api.createParty({
           name: 'Walk-in Retail Customer',
           type: 'CUSTOMER',
@@ -155,10 +156,12 @@ export default function PosBillingCounterPage() {
         paidAmount: grandTotal,
         paymentMethod,
         invoiceDate: new Date().toISOString(),
+        narration: customCustomerName ? `POS-WALKIN:${customCustomerName}` : 'POS Cashier checkout',
       });
       setLastInvoice(result);
       setReceiptSuccess(true);
       setCart([]);
+      setCustomCustomerName('');
       const refreshed = await api.getItems();
       setItems(refreshed || []);
     } catch (e) {
@@ -426,7 +429,13 @@ export default function PosBillingCounterPage() {
               <div style={{ borderBottom: '1px dashed #475569', padding: '6px 0', marginBottom: '8px', textAlign: 'left' }}>
                 <div>Receipt: {lastInvoice.invoiceNumber}</div>
                 <div>Date: {new Date(lastInvoice.invoiceDate).toLocaleString()}</div>
-                <div>Customer: {lastInvoice.customer?.name || 'Walk-in'}</div>
+                <div>
+                  Customer: {
+                    lastInvoice.narration?.startsWith('POS-WALKIN:')
+                      ? lastInvoice.narration.replace('POS-WALKIN:', '')
+                      : lastInvoice.customer?.name || 'Walk-in'
+                  }
+                </div>
                 {lastInvoice.customer?.trn && lastInvoice.customer.trn !== '100000000000003' && (
                   <div>Cust TRN: {lastInvoice.customer.trn}</div>
                 )}
@@ -550,6 +559,22 @@ export default function PosBillingCounterPage() {
             </select>
           </div>
 
+          {/* Custom Walk-in Customer name input */}
+          {isWalkIn && (
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>
+                Walk-in Customer Name (Unregistered)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. John Doe / Cash Customer"
+                value={customCustomerName}
+                onChange={(e) => setCustomCustomerName(e.target.value)}
+                style={{ width: '100%', padding: '6px 10px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.82rem', boxSizing: 'border-box' }}
+              />
+            </div>
+          )}
+
           <div style={{ marginBottom: '14px' }}>
             <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Payment Method</label>
             <select
@@ -589,7 +614,9 @@ export default function PosBillingCounterPage() {
               ) : (
                 <div>
                   <strong style={{ color: '#075985', display: 'block', marginBottom: '2px' }}>🧾 SIMPLIFIED TAX INVOICE MODE</strong>
-                  <span style={{ color: '#0369a1' }}>Walk-in customer receipt (Under AED 10,000 threshold).</span>
+                  <span style={{ color: '#0369a1' }}>
+                    Customer: {customCustomerName || 'Walk-in Retail Customer'} (Under AED 10,000 threshold).
+                  </span>
                 </div>
               )}
             </div>

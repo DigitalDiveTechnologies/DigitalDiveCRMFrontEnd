@@ -106,13 +106,14 @@ export default function PurchasesPage() {
 
   const handleSaveBill = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSupplierId || !supplierBillNumber || billLines.length === 0 || !canCreate || isLoading) return;
+    if (!selectedSupplierId || billLines.length === 0 || !canCreate || isLoading) return;
     setIsLoading(true);
 
     try {
+      const finalBillNo = supplierBillNumber.trim() || 'SUP-REF-' + Math.floor(Math.random() * 900000 + 100000);
       await api.createBill({
         supplierId: selectedSupplierId,
-        supplierBillNumber,
+        supplierBillNumber: finalBillNo,
         billDate: new Date().toISOString(),
         lines: billLines,
       });
@@ -274,11 +275,10 @@ export default function PurchasesPage() {
                   </select>
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Supplier Invoice Bill Number *</label>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Supplier Invoice Bill Number (Optional)</label>
                   <input
                     type="text"
-                    required
-                    placeholder="e.g. INV-2026-880"
+                    placeholder="Auto-generates if blank"
                     value={supplierBillNumber}
                     onChange={(e) => setSupplierBillNumber(e.target.value)}
                     style={{ width: '100%', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.85rem' }}
