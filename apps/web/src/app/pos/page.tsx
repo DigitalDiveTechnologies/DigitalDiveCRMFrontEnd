@@ -134,8 +134,13 @@ export default function PosBillingCounterPage() {
   const vatTotal = subtotal * 0.05;
   const grandTotal = subtotal + vatTotal;
 
+  const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
+  const isWalkIn = selectedCustomer?.name?.toLowerCase().includes('walk-in');
+  const isOverLimit = grandTotal >= 10000;
+  const requiresCustomer = isOverLimit && isWalkIn;
+
   const handleChargeAndPrint = async () => {
-    if (cart.length === 0 || !canBill || !selectedCustomerId || isLoading) return;
+    if (cart.length === 0 || !canBill || !selectedCustomerId || isLoading || requiresCustomer) return;
     setIsLoading(true);
     try {
       const result = await api.createSalesInvoice({
@@ -414,10 +419,17 @@ export default function PosBillingCounterPage() {
               <div style={{ color: '#475569', marginBottom: '2px' }}>Tel: {s.phone}</div>
               <div style={{ color: '#475569', marginBottom: '8px' }}>TRN: {s.trn}</div>
 
-              <div style={{ borderTop: '1px dashed #475569', borderBottom: '1px dashed #475569', padding: '6px 0', marginBottom: '8px', textAlign: 'left' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '0.8rem', margin: '4px 0 8px 0', textTransform: 'uppercase', color: '#000', borderBottom: '1px dashed #475569', borderTop: '1px dashed #475569', padding: '4px 0' }}>
+                {lastInvoice.customer?.name?.toLowerCase().includes('walk-in') ? 'SIMPLIFIED TAX INVOICE' : 'TAX INVOICE'}
+              </div>
+
+              <div style={{ borderBottom: '1px dashed #475569', padding: '6px 0', marginBottom: '8px', textAlign: 'left' }}>
                 <div>Receipt: {lastInvoice.invoiceNumber}</div>
                 <div>Date: {new Date(lastInvoice.invoiceDate).toLocaleString()}</div>
                 <div>Customer: {lastInvoice.customer?.name || 'Walk-in'}</div>
+                {lastInvoice.customer?.trn && lastInvoice.customer.trn !== '100000000000003' && (
+                  <div>Cust TRN: {lastInvoice.customer.trn}</div>
+                )}
                 <div>Payment: {paymentMethod}</div>
               </div>
 
@@ -551,6 +563,38 @@ export default function PosBillingCounterPage() {
             </select>
           </div>
 
+          {/* UAE VAT Compliance Panel */}
+          {cart.length > 0 && (
+            <div style={{
+              margin: '12px 0',
+              padding: '10px 12px',
+              borderRadius: '6px',
+              border: requiresCustomer ? '1px solid #fee2e2' : !isWalkIn ? '1px solid #d1fae5' : '1px solid #e0f2fe',
+              background: requiresCustomer ? '#fef2f2' : !isWalkIn ? '#f0fdf4' : '#f0f9ff',
+              fontSize: '0.78rem',
+            }}>
+              {requiresCustomer ? (
+                <div>
+                  <strong style={{ color: '#991b1b', display: 'block', marginBottom: '4px' }}>⚠️ UAE FTA LAW ALERT</strong>
+                  <span style={{ color: '#b91c1c' }}>
+                    Standard Tax Invoice is legally required for transactions above AED 10,000. Please select a registered corporate customer instead of Walk-in.
+                  </span>
+                </div>
+              ) : !isWalkIn ? (
+                <div>
+                  <strong style={{ color: '#166534', display: 'block', marginBottom: '2px' }}>📋 STANDARD TAX INVOICE MODE</strong>
+                  <span style={{ color: '#15803d', display: 'block' }}>Buyer: {selectedCustomer?.name}</span>
+                  <span style={{ color: '#15803d', display: 'block', fontFamily: 'monospace' }}>TRN: {selectedCustomer?.trn || 'N/A'}</span>
+                </div>
+              ) : (
+                <div>
+                  <strong style={{ color: '#075985', display: 'block', marginBottom: '2px' }}>🧾 SIMPLIFIED TAX INVOICE MODE</strong>
+                  <span style={{ color: '#0369a1' }}>Walk-in customer receipt (Under AED 10,000 threshold).</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {cart.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '32px', color: '#94a3b8', border: '1px dashed #cbd5e1', borderRadius: '8px', marginBottom: '20px' }}>
               Basket is empty. Add products on the left.
@@ -591,9 +635,9 @@ export default function PosBillingCounterPage() {
 
           <button
             onClick={handleChargeAndPrint}
-            disabled={cart.length === 0 || !canBill || isLoading}
+            disabled={cart.length === 0 || !canBill || isLoading || requiresCustomer}
             className="btn-primary"
-            style={{ width: '100%', padding: '12px', justifyContent: 'center' }}
+            style={{ width: '100%', padding: '12px', justifyContent: 'center', opacity: requiresCustomer ? 0.55 : 1, cursor: requiresCustomer ? 'not-allowed' : 'pointer' }}
           >
             <Printer size={18} />
             {isLoading ? 'Processing...' : 'Charge & Print Receipt'}
