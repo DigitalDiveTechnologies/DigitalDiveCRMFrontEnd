@@ -53,14 +53,7 @@ export default function Header() {
           // Then fetch from backend if tenantId exists
           if (session.tenantId) {
             setTenantId(session.tenantId);
-            fetch(`http://localhost:3001/auth/tenants`, {
-              headers: {
-                'Content-Type': 'application/json',
-                'x-tenant-id': session.tenantId,
-                'Authorization': `Bearer ${session.accessToken || ''}`,
-              },
-            })
-              .then(r => r.ok ? r.json() : null)
+            api.getTenants()
               .then((tenants: any[]) => {
                 if (!tenants || tenants.length === 0) return;
                 const myTenant = tenants.find((t: any) => t.id === session.tenantId) || tenants[0];

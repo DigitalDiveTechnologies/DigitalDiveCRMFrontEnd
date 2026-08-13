@@ -3,6 +3,8 @@
  * Built according to UAE Accounting Platform Technical Architecture Section 5.
  */
 
+import { API_BASE_URL } from './apiClient';
+
 export interface OutboxMutation {
   id: string; // Idempotency UUID
   tenantId: string;
@@ -70,7 +72,7 @@ export const offlineDb = {
   },
 
   // Trigger Outbox Sync Push to remote backend server
-  async syncOutboxWithServer(remoteSyncUrl: string = 'http://localhost:3001/sync/push'): Promise<{ syncedCount: number; errors: any[] }> {
+  async syncOutboxWithServer(remoteSyncUrl: string = `${API_BASE_URL}/sync/push`): Promise<{ syncedCount: number; errors: any[] }> {
     const pending = this.getOutbox();
     if (pending.length === 0) return { syncedCount: 0, errors: [] };
 

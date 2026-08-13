@@ -2,13 +2,16 @@
  * API Client Utility for connecting Next.js web dashboard to NestJS backend REST APIs.
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+export const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+).replace(/\/$/, '');
 
 export async function fetchFromApi<T = any>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<T> {
   let activeTenant = 'tenant-default';
+  let accessToken = '';
   if (typeof window !== 'undefined') {
     const session = localStorage.getItem('user_session');
     if (session) {
@@ -17,6 +20,9 @@ export async function fetchFromApi<T = any>(
         if (parsed.tenantId) {
           activeTenant = parsed.tenantId;
         }
+        if (parsed.accessToken) {
+          accessToken = parsed.accessToken;
+        }
       } catch (e) {}
     }
   }
@@ -24,6 +30,7 @@ export async function fetchFromApi<T = any>(
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     'x-tenant-id': activeTenant,
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     ...(options.headers || {}),
   };
 
